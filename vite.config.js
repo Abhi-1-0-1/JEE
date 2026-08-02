@@ -4,5 +4,5 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: '/JEE-Planner/', // 👈 ADD THIS LINE EXACTLY
+  base: '/JEE/',
 })
