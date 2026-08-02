@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://Abhi-1-0-1.github.io/JEE-Planner",
+  "homepage": "https://Abhi-1-0-1.github.io/JEE",
   "scripts": {
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
