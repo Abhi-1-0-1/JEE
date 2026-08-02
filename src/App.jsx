@@ -77,7 +77,7 @@ const S = {
 
 const JEE_SYLLABUS = {
   Physics: {
-    "Class 11": ["Units & Measurements","Kinematics","Laws of Motion","Work Energy & Power","Rotational Mechanics","Gravitation","Properties of Matter","Thermodynamics","Kinetic Theory of Gases","Oscillations","Waves"],
+    "Class 11": ["Units & Measurements","Kinematics","Laws of Motion","Work Energy & Power","Rotational Mechanics","Gravitation","Fluid Mechanics", "Solids", "Kinetic Theory Of Gases", "Thermodynamics","Kinetic Theory of Gases","Oscillations","Waves"],
     "Class 12": ["Electrostatics","Capacitance", "Current Electricity","Moving Charges & Magnetism","Magnetism & Matter","Electromagnetic Induction","Alternating Current","Electromagnetic Waves","Ray Optics","Wave Optics","Dual Nature of Radiation","Atoms & Nuclei","Semiconductors"],
   },
   Chemistry: {
