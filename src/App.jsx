@@ -81,12 +81,12 @@ const JEE_SYLLABUS = {
     "Class 12": ["Electrostatics","Capacitance", "Current Electricity","Moving Charges & Magnetism","Magnetism & Matter","Electromagnetic Induction","Alternating Current","Electromagnetic Waves","Ray Optics","Wave Optics","Dual Nature of Radiation","Atoms & Nuclei","Semiconductors"],
   },
   Chemistry: {
-    "Class 11": ["Basic Concepts","Atomic Structure","Chemical Bonding","States of Matter","Thermodynamics","Equilibrium","Redox Reactions","Hydrogen","s-Block Elements","p-Block Elements (11)","General Organic Chemistry","Hydrocarbons"],
+    "Class 11": ["Basic Concepts", "Atomic Structure", "Chemical Bonding","Thermodynamics", "Equilibrium", "Redox Reactions", "s-Block Elements","p-Block Elements (11)","General Organic Chemistry","Hydrocarbons"],
     "Class 12": ["Solid State","Solutions","Electrochemistry","Chemical Kinetics","Surface Chemistry","d & f Block Elements","Coordination Compounds","Haloalkanes & Haloarenes","Alcohols Phenols Ethers","Aldehydes Ketones","Carboxylic Acids","Amines","Biomolecules","Polymers","Chemistry in Everyday Life"],
   },
   Mathematics: {
-    "Class 11": ["Sets Relations Functions","Trigonometry","Complex Numbers","Quadratic Equations","Sequences & Series","Straight Lines","Conic Sections","3D Geometry Intro","Permutations & Combinations","Binomial Theorem","Statistics","Probability (11)"],
-    "Class 12": ["Relations & Functions (12)","Inverse Trigonometry","Matrices & Determinants", "Limits", "Continuity", "Differentiability", "Applications of Derivatives","Integrals","Applications of Integrals","Differential Equations","Vectors","3D Geometry","Linear Programming","Probability (12)"],
+    "Class 11": ["Sets","Trigonometry","Complex Numbers","Quadratic Equations","Sequences & Series","Straight Lines","Circles", "Parabola", "Hyperbola","Permutations & Combinations","Binomial Theorem","Statistics","Probability (11)"],
+    "Class 12": ["Relations & Functions","Inverse Trigonometry","Matrices & Determinants", "Limits", "Continuity", "Differentiability", "Methods Of Differentiation", "Applications of Derivatives","Integrals","Applications of Integrals","Differential Equations","Vectors","3D Geometry","Linear Programming","Probability (12)"],
   },
 };
 
