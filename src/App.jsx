@@ -282,6 +282,7 @@ const normalizeData = (raw) => {
       ? source.notes.map((note) => ({
           id: note.id ?? noteUid(),
           text: String(note.text ?? "").trim(),
+          note: String(note.note ?? "").trim(),
           done: Boolean(note.done),
           createdAt: note.createdAt ?? new Date().toISOString(),
         })).filter((note) => note.text.length > 0)
@@ -795,23 +796,33 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
 
+  const draftParts = useMemo(() => {
+    const slashIdx = draft.indexOf("/");
+    if (slashIdx < 0) return { chapterText:draft.trim(), customNote:"", noteSuffix:"" };
+    const customNote = draft.slice(slashIdx + 1).trim();
+    return {
+      chapterText:draft.slice(0, slashIdx).trim(),
+      customNote,
+      noteSuffix:customNote ? ` / ${customNote}` : " / ",
+    };
+  }, [draft]);
+
   const suggestions = useMemo(() => {
-    const q = draft.trim();
+    const q = draftParts.chapterText;
     if (!q) return [];
     return rankChapters(q, null, 5).map((entry) => ({
       ...entry,
       cfg: S[entry.subject] ?? S.Physics,
     }));
-  }, [draft]);
-
+  }, [draftParts.chapterText]);
   const activeSuggestion = suggestions[selIdx] ?? suggestions[0] ?? null;
   const primaryAccent = activeSuggestion?.cfg?.accent ?? "var(--accent-orange)";
   const hasMatches = suggestions.length > 0;
 
-  const commit = (text) => {
+  const commit = (text, customNote = draftParts.customNote) => {
     const value = text.trim();
     if (!value) return;
-    onAddNote(value);
+    onAddNote(value, customNote);
     setDraft("");
     setSelIdx(0);
     inputRef.current?.focus();
@@ -819,7 +830,7 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
 
   const applySuggestion = (entry) => {
     if (!entry) return;
-    setDraft(entry.chapter);
+    setDraft(entry.chapter + draftParts.noteSuffix);
     setSelIdx(0);
     inputRef.current?.focus();
   };
@@ -899,10 +910,10 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
               }
               if (e.key === "Enter") {
                 e.preventDefault();
-                commit(suggestions.length ? (activeSuggestion?.chapter ?? draft) : draft);
+                commit(suggestions.length ? (activeSuggestion?.chapter ?? draftParts.chapterText) : draftParts.chapterText);
               }
             }}
-            placeholder="Type chapters or quick reminders..."
+            placeholder="Type chapters / optional note..."
             style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", color:"var(--text-primary)", fontSize:12, fontFamily:"'JetBrains Mono', monospace", caretColor: hasMatches ? primaryAccent : "var(--accent-orange)" }}
           />
 
@@ -913,7 +924,7 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
           )}
         </div>
 
-        {focused && draft && (
+        {focused && draftParts.chapterText && (
           <div style={{ marginTop:6, border:"1px solid var(--border-sub)", borderRadius:12, overflow:"hidden", background:"var(--bg-elevated)", boxShadow:"0 16px 32px rgba(0,0,0,0.35)" }}>
             {hasMatches ? (
               suggestions.map((entry, index) => {
@@ -955,7 +966,7 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
             )}
             <div style={{ padding:"8px 12px", borderTop:"1px solid var(--border-sub)", background:"var(--bg-surface)", display:"flex", justifyContent:"space-between", gap:8 }}>
               <span style={{ fontSize:9, color:"var(--text-muted)", letterSpacing:"0.14em" }}>
-                Tab = autocomplete · Enter = save note
+                Tab = autocomplete · / adds detail · Enter = save note
               </span>
               <span style={{ fontSize:10, color: hasMatches ? primaryAccent : "var(--accent-orange)" }}>
                 {hasMatches ? `MATCH ${activeSuggestion?.chapter ?? ""}` : "FREE TEXT"}
@@ -1008,6 +1019,11 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
                     {note.text}
                   </span>
                 </div>
+                {note.note && (
+                  <span style={{ fontSize:11, lineHeight:1.45, color:note.done ? "var(--text-muted)" : "var(--text-sec)", textDecoration:note.done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    {note.note}
+                  </span>
+                )}
                 {!isChapterLike && (
                   <span style={{ fontSize:10, color:"var(--text-dim)" }}>
                     Free-form reminder
@@ -1470,8 +1486,8 @@ export default function App() {
     patch(prev => ({ ...prev, days:{ ...prev.days, [date]:{ tasks:[...(prev.days[date]?.tasks??[]),task] } } }));
   }, [patch]);
 
-  const addNote = useCallback((text) => {
-    const note = { id:noteUid(), text:text.trim(), done:false, createdAt:new Date().toISOString() };
+  const addNote = useCallback((text, customNote = "") => {
+    const note = { id:noteUid(), text:text.trim(), note:customNote.trim(), done:false, createdAt:new Date().toISOString() };
     patch(prev => ({ ...prev, notes:[note, ...(prev.notes??[])] }));
   }, [patch]);
 
