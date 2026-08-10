@@ -42,6 +42,9 @@ const GLOBAL_CSS = `
   @keyframes slideUp  { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
   @keyframes pulse    { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
   @keyframes scaleIn  { from { opacity:0; transform:scale(0.92) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
+  @keyframes toastIn  { from { opacity:0; transform:translateY(10px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
+  @keyframes toastOut { from { opacity:1; transform:translateY(0) scale(1); } to { opacity:0; transform:translateY(6px) scale(0.97); } }
+  @keyframes dayGlow  { 0%,100% { box-shadow:0 0 0 0 rgba(61,252,154,0); } 50% { box-shadow:0 0 18px 1px rgba(61,252,154,0.28); } }
 
   .help-overlay  { animation: fadeIn 0.18s ease forwards; }
   .help-panel    { animation: dropIn 0.22s cubic-bezier(0.34,1.3,0.64,1) forwards; }
@@ -53,6 +56,18 @@ const GLOBAL_CSS = `
   .cal-day-cell:hover { background: var(--bg-hover) !important; transform: scale(1.04); }
   .cal-day-cell.selected  { border-color: var(--accent-cyan)   !important; background: #38D9F515 !important; }
   .cal-day-cell.is-today  { border-color: var(--accent-orange) !important; }
+
+  .toast-item        { animation: toastIn 0.22s cubic-bezier(0.34,1.3,0.64,1) forwards; }
+  .toast-item.leaving { animation: toastOut 0.2s ease forwards; }
+
+  .task-card-in { animation: slideUp 0.2s ease forwards; }
+  .note-row-in  { animation: slideUp 0.18s ease forwards; }
+
+  .day-complete-glow { animation: dayGlow 2.6s ease-in-out infinite; }
+
+  .day-col-drop-active { outline: 2px dashed var(--accent-cyan) !important; outline-offset: -2px; }
+
+  .resize-handle:hover .resize-handle-grip { background: var(--text-sec) !important; }
 `;
 
 function InjectStyles() {
@@ -63,6 +78,107 @@ function InjectStyles() {
     return () => document.head.removeChild(el);
   }, []);
   return null;
+}
+
+// ─── TOAST NOTIFICATIONS ───────────────────────────────────────────────────────
+// Lightweight, self-contained feedback system used for anything that happens
+// off-screen or via keyboard shortcut / drag-drop, so actions always feel
+// acknowledged. See <Toaster/> for rendering.
+
+function useToast() {
+  const [toasts, setToasts] = useState([]);
+
+  const push = useCallback((message, opts = {}) => {
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    setToasts((t) => [...t, { id, message, icon: opts.icon ?? "✓", leaving: false }]);
+    const duration = opts.duration ?? 2600;
+    setTimeout(() => setToasts((t) => t.map((x) => (x.id === id ? { ...x, leaving: true } : x))), duration);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), duration + 220);
+  }, []);
+
+  return { toasts, push };
+}
+
+function Toaster({ toasts }) {
+  if (!toasts.length) return null;
+  return (
+    <div style={{ position:"fixed", bottom:18, right:18, display:"flex", flexDirection:"column", gap:8, zIndex:300, pointerEvents:"none", maxWidth:300 }}>
+      {toasts.map((t) => (
+        <div key={t.id} className={`toast-item${t.leaving ? " leaving" : ""}`} style={{
+          display:"flex", alignItems:"center", gap:9,
+          background:"var(--bg-elevated)", border:"1px solid var(--border-main)",
+          borderRadius:10, padding:"9px 14px", boxShadow:"0 16px 32px rgba(0,0,0,0.45)",
+          fontFamily:"'JetBrains Mono', monospace", fontSize:12, color:"var(--text-primary)",
+        }}>
+          <span style={{ flexShrink:0, fontSize:12 }}>{t.icon}</span>
+          <span style={{ lineHeight:1.4 }}>{t.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── RESIZE HANDLE ─────────────────────────────────────────────────────────────
+// Generic vertical drag-to-resize divider. Drag to resize, double-click to
+// reset to the default size. Used between the Notepad and Mastery Ledger.
+
+function ResizeHandle({ onResizeDelta, onReset, onResizeStart, onResizeEnd }) {
+  const draggingRef = useRef(false);
+  const lastYRef = useRef(0);
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    const handleMove = (e) => {
+      if (!draggingRef.current) return;
+      const dy = e.clientY - lastYRef.current;
+      lastYRef.current = e.clientY;
+      onResizeDelta(dy);
+    };
+    const handleUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      setActive(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      onResizeEnd?.();
+    };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [onResizeDelta, onResizeEnd]);
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    lastYRef.current = e.clientY;
+    setActive(true);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    onResizeStart?.();
+  };
+
+  return (
+    <div
+      className="resize-handle"
+      onMouseDown={handleMouseDown}
+      onDoubleClick={onReset}
+      title="Drag to resize · double-click to reset"
+      style={{
+        flexShrink:0, height:9, cursor:"row-resize", position:"relative",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        background: active ? "#38D9F512" : "transparent",
+        borderTop:"1px solid var(--border-sub)", borderBottom:"1px solid var(--border-sub)",
+        transition:"background 0.15s",
+      }}
+      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "var(--bg-hover)"; }}
+      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+    >
+      <div className="resize-handle-grip" style={{ width:28, height:3, borderRadius:99, background: active ? "var(--accent-cyan)" : "var(--border-main)", transition:"background 0.15s" }} />
+    </div>
+  );
 }
 
 // ─── SUBJECT CONFIG ────────────────────────────────────────────────────────────
@@ -727,7 +843,7 @@ function SubjectTree({ subject, classes, activeDate, onAddTask, searchQ }) {
 function TaskCard({ task, onToggle, onRemove }) {
   const cfg = S[task.subject] ?? S.Physics;
   return (
-    <div style={{ background:task.completed?"var(--bg-surface)":"var(--bg-elevated)", border:`1px solid ${task.completed?"var(--border-sub)":cfg.accentBorder}`, opacity:task.completed?0.55:1, borderRadius:10, padding:"10px 12px", marginBottom:8, transition:"all 0.2s" }}>
+    <div className="task-card-in" style={{ background:task.completed?"var(--bg-surface)":"var(--bg-elevated)", border:`1px solid ${task.completed?"var(--border-sub)":cfg.accentBorder}`, opacity:task.completed?0.55:1, borderRadius:10, padding:"10px 12px", marginBottom:8, transition:"all 0.2s" }}>
       <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
         <button onClick={onToggle} style={{ marginTop:2, width:18, height:18, borderRadius:5, flexShrink:0, border:`2px solid ${task.completed?cfg.accent:cfg.accentBorder}`, background:task.completed?cfg.accent+"30":"transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s" }}>
           {task.completed && <span style={{ color:cfg.accent, fontSize:10, lineHeight:1 }}>✓</span>}
@@ -751,16 +867,49 @@ function TaskCard({ task, onToggle, onRemove }) {
 
 // ─── DAY COLUMN ────────────────────────────────────────────────────────────────
 
-function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove }) {
+function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove, onDropNote }) {
   const done = tasks.filter(t => t.completed).length;
   const pct  = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+  const isComplete = tasks.length > 0 && pct === 100;
   const today = todayStr();
   const diffDays = Math.round((new Date(date+"T00:00:00") - new Date(today+"T00:00:00")) / 86400000);
   const dayLabel = isToday ? "TODAY" : diffDays===-1 ? "YESTERDAY" : diffDays===1 ? "TOMORROW" : `${diffDays>0?"+":""}${diffDays}d`;
 
+  const [dragOver, setDragOver] = useState(false);
+  const dragCounter = useRef(0);
+
+  const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; };
+  const handleDragEnter = (e) => {
+    if (!e.dataTransfer.types.includes("application/x-jee-note")) return;
+    e.preventDefault();
+    dragCounter.current += 1;
+    setDragOver(true);
+  };
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) setDragOver(false);
+  };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragOver(false);
+    const raw = e.dataTransfer.getData("application/x-jee-note");
+    if (!raw) return;
+    try { onDropNote?.(JSON.parse(raw)); } catch { /* ignore malformed payload */ }
+  };
+
   return (
-    <div onClick={onClick} style={{ flex:1, display:"flex", flexDirection:"column", borderRight:"1px solid var(--border-sub)", cursor:"pointer", transition:"background 0.15s", overflow:"hidden", background:isActive?"linear-gradient(180deg,#0D1828 0%,var(--bg-base) 100%)":"var(--bg-base)", boxShadow:isActive?"inset 1px 0 0 #38D9F525,inset -1px 0 0 #38D9F525":"none" }}>
-      <div style={{ padding:"16px 16px 12px", flexShrink:0, background:isActive?"#0D1828":isToday?"var(--accent-orange)15":"transparent", borderBottom:`1px solid ${isActive?"#38D9F530":isToday?"var(--accent-orange)":"var(--border-sub)"}` }}>
+    <div
+      onClick={onClick}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={dragOver ? "day-col-drop-active" : undefined}
+      style={{ flex:1, display:"flex", flexDirection:"column", borderRight:"1px solid var(--border-sub)", cursor:"pointer", transition:"background 0.15s", overflow:"hidden", background:dragOver?"#38D9F510":isActive?"linear-gradient(180deg,#0D1828 0%,var(--bg-base) 100%)":"var(--bg-base)", boxShadow:isActive?"inset 1px 0 0 #38D9F525,inset -1px 0 0 #38D9F525":"none" }}
+    >
+      <div className={isComplete ? "day-complete-glow" : undefined} style={{ padding:"16px 16px 12px", flexShrink:0, background:isActive?"#0D1828":isToday?"var(--accent-orange)15":"transparent", borderBottom:`1px solid ${isComplete?"var(--accent-green)60":isActive?"#38D9F530":isToday?"var(--accent-orange)":"var(--border-sub)"}` }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
           <span style={{ fontSize:10, fontWeight:700, letterSpacing:"0.25em", color:isActive?"var(--accent-cyan)":isToday?"var(--accent-orange)":"var(--text-muted)", background:isActive?"#38D9F515":isToday?"var(--accent-orange)15":"transparent", borderRadius:5, padding:isActive?"2px 7px":"0" }}>{dayLabel}</span>
           <span style={{ fontSize:10, color:pct===100?"var(--accent-green)":"var(--text-sec)" }}>{done}/{tasks.length}</span>
@@ -775,12 +924,12 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
         <div style={{ height:3, background:"var(--border-sub)", borderRadius:99, overflow:"hidden", marginTop:8 }}>
           <div style={{ width:`${pct}%`, height:"100%", background:pct===100?"var(--accent-green)":"var(--accent-cyan)", borderRadius:99, transition:"width 0.3s ease" }} />
         </div>
-        {tasks.length > 0 && <div style={{ fontSize:11, color:pct===100?"var(--accent-green)":"var(--text-muted)", marginTop:4 }}>{pct}% complete</div>}
+        {tasks.length > 0 && <div style={{ fontSize:11, color:pct===100?"var(--accent-green)":"var(--text-muted)", marginTop:4 }}>{pct===100?"✓ day complete":`${pct}% complete`}</div>}
       </div>
       <div onClick={e => e.stopPropagation()} style={{ flex:1, overflowY:"auto", padding:"12px 10px" }}>
         {tasks.length === 0 ? (
-          <p style={{ fontSize:12, color:"var(--text-dim)", textAlign:"center", marginTop:40, lineHeight:1.7 }}>
-            — no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>hover a chapter → +</span></>}
+          <p style={{ fontSize:12, color:dragOver?"var(--accent-cyan)":"var(--text-dim)", textAlign:"center", marginTop:40, lineHeight:1.7, transition:"color 0.15s" }}>
+            {dragOver ? <>↓ drop to schedule here</> : <>— no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>hover a chapter → + · drag a note in</span></>}</>}
           </p>
         ) : tasks.map(t => <TaskCard key={t.id} task={t} onToggle={() => onToggle(t.id)} onRemove={() => onRemove(t.id)} />)}
       </div>
@@ -790,8 +939,9 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
 
 // ─── MASTERY LEDGER ────────────────────────────────────────────────────────────
 
-function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDone }) {
+function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDeleteNote, onClearDone }) {
   const [draft, setDraft] = useState("");
+  const [draggingId, setDraggingId] = useState(null);
   const [selIdx, setSelIdx] = useState(0);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
@@ -844,12 +994,12 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
   const doneCount = notes.length - pendingCount;
 
   return (
-    <section style={{ borderBottom:"1px solid var(--border-sub)", background:"linear-gradient(180deg, rgba(13,19,32,0.98), rgba(8,12,20,0.98))" }}>
-      <div style={{ padding:"12px 14px 10px", borderBottom:"1px solid var(--border-sub)" }}>
+    <section style={{ height, flexShrink:0, display:"flex", flexDirection:"column", borderBottom:"1px solid var(--border-sub)", background:"linear-gradient(180deg, rgba(13,19,32,0.98), rgba(8,12,20,0.98))", transition: resizing ? "none" : "height 0.22s cubic-bezier(0.34,1.2,0.64,1)", overflow:"hidden" }}>
+      <div style={{ padding:"12px 14px 10px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom:10 }}>
           <div>
             <div style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--accent-orange)", userSelect:"none" }}>TODO NOTEPAD</div>
-            <div style={{ fontSize:12, color:"var(--text-sec)", marginTop:4 }}>Jot chapters down, keep free notes as-is.</div>
+            <div style={{ fontSize:12, color:"var(--text-sec)", marginTop:4 }}>Jot chapters down, then drag ⠿ onto a day to schedule it.</div>
           </div>
           <div style={{ display:"flex", gap:6, flexShrink:0 }}>
             <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:999, padding:"2px 8px" }}>{pendingCount} open</span>
@@ -990,18 +1140,29 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
         )}
       </div>
 
-      <div style={{ maxHeight:220, overflowY:"auto", padding:"10px 10px 12px", display:"flex", flexDirection:"column", gap:8 }}>
+      <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"10px 10px 12px", display:"flex", flexDirection:"column", gap:8 }}>
         {sortedNotes.length === 0 ? (
           <div style={{ padding:"16px 8px", border:"1px dashed var(--border-sub)", borderRadius:12, textAlign:"center", color:"var(--text-dim)", fontSize:12, lineHeight:1.7 }}>
             Drop chapter names or reminders here as a running revision queue.
           </div>
         ) : sortedNotes.map((note) => {
           const { isChapterLike, badgeColor, badgeBg, badgeBorder, badgeText } = getChapterTheme(note.text);
+          const isDragging = draggingId === note.id;
           return (
             <div
               key={note.id}
-              style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 10px", borderRadius:12, border:`1px solid ${note.done ? "var(--border-sub)" : "var(--border-main)"}`, background:note.done ? "var(--bg-surface)" : "var(--bg-elevated)", opacity:note.done ? 0.72 : 1 }}
+              className="note-row-in"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = "copy";
+                e.dataTransfer.setData("application/x-jee-note", JSON.stringify({ text: note.text, note: note.note }));
+                e.dataTransfer.setData("text/plain", note.note ? `${note.text} — ${note.note}` : note.text);
+                setDraggingId(note.id);
+              }}
+              onDragEnd={() => setDraggingId(null)}
+              style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 10px", borderRadius:12, border:`1px solid ${note.done ? "var(--border-sub)" : "var(--border-main)"}`, background:note.done ? "var(--bg-surface)" : "var(--bg-elevated)", opacity:isDragging ? 0.35 : (note.done ? 0.72 : 1), transition:"opacity 0.15s" }}
             >
+              <span title="Drag onto a day to schedule" style={{ flexShrink:0, cursor:"grab", color:"var(--text-dim)", fontSize:12, lineHeight:1, userSelect:"none", padding:"0 1px" }}>⠿</span>
               <button
                 onClick={() => onToggleNote(note.id)}
                 aria-label={note.done ? "Mark note as open" : "Mark note as done"}
@@ -1047,18 +1208,55 @@ function NotepadPanel({ notes, onAddNote, onToggleNote, onDeleteNote, onClearDon
   );
 }
 
-function MasteryLedger({ ledger }) {
+function highlightMatch(text, query) {
+  const str = String(text ?? "");
+  if (!query) return str;
+  const idx = str.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return str;
+  return (
+    <>
+      {str.slice(0, idx)}
+      <mark style={{ background:"#38D9F535", color:"var(--accent-cyan)", borderRadius:3, padding:"0 1px" }}>{str.slice(idx, idx + query.length)}</mark>
+      {str.slice(idx + query.length)}
+    </>
+  );
+}
+
+function MasteryLedger({ ledger, search = "" }) {
   const [open, setOpen] = useState({});
+  const q = search.trim().toLowerCase();
   const subjects = Object.keys(ledger);
   if (!subjects.length) return <p style={{ fontSize:12, color:"var(--text-muted)", textAlign:"center", marginTop:60, lineHeight:1.8, padding:"0 16px" }}>Complete tasks to build<br />your mastery log.</p>;
 
+  const filtered = useMemo(() => {
+    if (!q) return ledger;
+    const out = {};
+    for (const [subject, chapters] of Object.entries(ledger)) {
+      const subjectHit = subject.toLowerCase().includes(q);
+      const keptChapters = {};
+      for (const [ch, entries] of Object.entries(chapters)) {
+        const chapterHit = ch.toLowerCase().includes(q);
+        const keptEntries = (subjectHit || chapterHit) ? entries : entries.filter(e => (e.note || "").toLowerCase().includes(q));
+        if (keptEntries.length) keptChapters[ch] = keptEntries;
+      }
+      if (Object.keys(keptChapters).length) out[subject] = keptChapters;
+    }
+    return out;
+  }, [ledger, q]);
+
+  const filteredSubjects = Object.keys(filtered);
+
+  if (q && !filteredSubjects.length) {
+    return <p style={{ fontSize:12, color:"var(--text-muted)", textAlign:"center", marginTop:60, lineHeight:1.8, padding:"0 16px" }}>No matches for “{search.trim()}”.</p>;
+  }
+
   return (
     <div>
-      {subjects.map(subject => {
+      {filteredSubjects.map(subject => {
         const cfg     = S[subject] ?? S.Physics;
-        const chapters = ledger[subject];
+        const chapters = filtered[subject];
         const total   = Object.values(chapters).reduce((s,a) => s+a.length, 0);
-        const sOpen   = open[subject] !== false;
+        const sOpen   = q ? true : open[subject] !== false;
         return (
           <div key={subject} style={{ borderBottom:"1px solid var(--border-sub)" }}>
             <button onClick={() => setOpen(o => ({ ...o, [subject]:!sOpen }))}
@@ -1067,13 +1265,13 @@ function MasteryLedger({ ledger }) {
               onMouseLeave={e => e.currentTarget.style.background="var(--bg-elevated)"}
             >
               <span style={{ color:cfg.accent, background:cfg.accentBg, border:`1px solid ${cfg.accentBorder}`, fontSize:9, fontWeight:700, letterSpacing:"0.18em", borderRadius:5, padding:"2px 6px" }}>{cfg.label}</span>
-              <span style={{ flex:1, textAlign:"left", fontSize:13, color:"var(--text-primary)", fontWeight:500 }}>{subject}</span>
+              <span style={{ flex:1, textAlign:"left", fontSize:13, color:"var(--text-primary)", fontWeight:500 }}>{highlightMatch(subject, search.trim())}</span>
               <span style={{ fontSize:11, color:"var(--accent-green)", background:"#3DFC9A15", borderRadius:99, padding:"1px 8px" }}>{total}</span>
               <span style={{ fontSize:9, color:"var(--text-muted)", marginLeft:4 }}>{sOpen?"▾":"▸"}</span>
             </button>
             {sOpen && Object.entries(chapters).map(([ch, entries]) => {
               const ck    = `${subject}|${ch}`;
-              const cOpen = open[ck] !== false;
+              const cOpen = q ? true : open[ck] !== false;
               return (
                 <div key={ch}>
                   <button onClick={() => setOpen(o => ({ ...o, [ck]:!cOpen }))}
@@ -1081,14 +1279,14 @@ function MasteryLedger({ ledger }) {
                     onMouseEnter={e => e.currentTarget.style.background="var(--bg-hover)"}
                     onMouseLeave={e => e.currentTarget.style.background="transparent"}
                   >
-                    <span style={{ flex:1, textAlign:"left", fontSize:12, color:"var(--text-sec)" }}>{ch}</span>
+                    <span style={{ flex:1, textAlign:"left", fontSize:12, color:"var(--text-sec)" }}>{highlightMatch(ch, search.trim())}</span>
                     <span style={{ fontSize:10, color:"var(--text-muted)" }}>{entries.length}×</span>
                     <span style={{ fontSize:8, color:"var(--text-muted)", marginLeft:4 }}>{cOpen?"▾":"▸"}</span>
                   </button>
                   {cOpen && entries.map((entry, i) => (
                     <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"3px 14px 3px 32px" }}>
                       <span style={{ fontSize:10, color:"var(--text-muted)", flexShrink:0, width:44 }}>{entry.date.slice(5).replace("-","/")}</span>
-                      <span style={{ fontSize:11, color:"var(--text-sec)", lineHeight:1.4 }}>{entry.note || "—"}</span>
+                      <span style={{ fontSize:11, color:"var(--text-sec)", lineHeight:1.4 }}>{highlightMatch(entry.note || "—", search.trim())}</span>
                     </div>
                   ))}
                 </div>
@@ -1391,6 +1589,10 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate }) {
 
 // ─── ROOT APP ──────────────────────────────────────────────────────────────────
 
+const NOTEPAD_DEFAULT_HEIGHT = 320;
+const NOTEPAD_MIN_HEIGHT     = 160;
+const LEDGER_MIN_HEIGHT      = 150;
+
 export default function App() {
   const [fileHandle,   setFileHandle]   = useState(null);
   const [data,         setData]         = useState(null);
@@ -1398,17 +1600,49 @@ export default function App() {
   const [showHelp,     setShowHelp]     = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [searchQ,      setSearchQ]      = useState("");
+  const [ledgerSearch, setLedgerSearch] = useState("");
+  const [saveStatus,   setSaveStatus]   = useState("idle"); // idle | saving | saved
+
+  // Notepad / Mastery Ledger resizable split
+  const [notepadHeight, setNotepadHeight] = useState(() => {
+    if (typeof window === "undefined") return NOTEPAD_DEFAULT_HEIGHT;
+    const saved = Number(window.localStorage.getItem("jee-os-notepad-height"));
+    return Number.isFinite(saved) && saved > 0 ? saved : NOTEPAD_DEFAULT_HEIGHT;
+  });
+  const [resizingNotepad, setResizingNotepad] = useState(false);
+  const asideRef = useRef(null);
+
+  const { toasts, push: pushToast } = useToast();
 
   const cmdRef    = useRef(null);
   const saveTimer = useRef(null);
 
   const moveActive = useCallback((step) => setActiveDate(d => shiftDateStr(d, step)), []);
 
+  useEffect(() => {
+    window.localStorage.setItem("jee-os-notepad-height", String(notepadHeight));
+  }, [notepadHeight]);
+
+  const handleNotepadResizeDelta = useCallback((dy) => {
+    setNotepadHeight((h) => {
+      const asideH = asideRef.current?.clientHeight ?? 800;
+      const maxH   = Math.max(NOTEPAD_MIN_HEIGHT, asideH - LEDGER_MIN_HEIGHT - 9);
+      return Math.min(Math.max(h + dy, NOTEPAD_MIN_HEIGHT), maxH);
+    });
+  }, []);
+  const resetNotepadHeight = useCallback(() => setNotepadHeight(NOTEPAD_DEFAULT_HEIGHT), []);
+
   const schedSave = useCallback((nextData) => {
     if (!fileHandle) return;
     clearTimeout(saveTimer.current);
+    setSaveStatus("saving");
     saveTimer.current = setTimeout(() => {
-      writeFH(fileHandle, { ...nextData, meta:{ ...nextData.meta, lastModified:new Date().toISOString() } }).catch(()=>{});
+      writeFH(fileHandle, { ...nextData, meta:{ ...nextData.meta, lastModified:new Date().toISOString() } })
+        .then(() => {
+          setSaveStatus("saved");
+          setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 1800);
+        })
+        .catch(() => setSaveStatus("idle"));
     }, 300);
   }, [fileHandle]);
 
@@ -1442,29 +1676,36 @@ export default function App() {
 
       if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key==="d") {
         e.preventDefault();
+        const pendingCount = (data.days[activeDate]?.tasks??[]).filter(t=>!t.completed).length;
         patch(prev => { const tasks=(prev.days[activeDate]?.tasks??[]).map(t=>({ ...t, completed:true, completedAt:t.completedAt??new Date().toISOString() })); return { ...prev, days:{ ...prev.days, [activeDate]:{ tasks } } }; });
+        if (pendingCount) pushToast(`Marked ${pendingCount} task${pendingCount===1?"":"s"} done`, { icon:"✅" });
         return;
       }
       if ((e.ctrlKey||e.metaKey) && e.key==="u") {
         e.preventDefault();
+        const doneCount = (data.days[activeDate]?.tasks??[]).filter(t=>t.completed).length;
         patch(prev => { const tasks=(prev.days[activeDate]?.tasks??[]).map(t=>({ ...t, completed:false, completedAt:null })); return { ...prev, days:{ ...prev.days, [activeDate]:{ tasks } } }; });
+        if (doneCount) pushToast(`Reset ${doneCount} task${doneCount===1?"":"s"} to open`, { icon:"↺" });
         return;
       }
       if ((e.ctrlKey||e.metaKey) && e.shiftKey && e.key==="D") {
         e.preventDefault();
+        const clearCount = (data.days[activeDate]?.tasks??[]).filter(t=>t.completed).length;
         patch(prev => { const tasks=(prev.days[activeDate]?.tasks??[]).filter(t=>!t.completed); return { ...prev, days:{ ...prev.days, [activeDate]:{ tasks } } }; });
+        if (clearCount) pushToast(`Cleared ${clearCount} completed task${clearCount===1?"":"s"}`, { icon:"🧹" });
         return;
       }
       if ((e.ctrlKey||e.metaKey) && e.shiftKey && e.key==="R") {
         e.preventDefault();
         const yesterday = shiftDateStr(activeDate,-1);
+        const pending = (data.days[yesterday]?.tasks??[]).filter(t=>!t.completed);
         patch(prev => {
-          const pending = (prev.days[yesterday]?.tasks??[]).filter(t=>!t.completed);
           const existingIds = new Set((prev.days[activeDate]?.tasks??[]).map(t=>t.id));
           const rollovers   = pending.filter(t=>!existingIds.has(t.id)).map(t=>({ ...t, id:uid(), isRollover:true, completed:false, completedAt:null }));
           if (!rollovers.length) return prev;
           return { ...prev, days:{ ...prev.days, [activeDate]:{ tasks:[...(prev.days[activeDate]?.tasks??[]),...rollovers] } } };
         });
+        if (pending.length) pushToast(`Rolled over ${pending.length} task${pending.length===1?"":"s"} from yesterday`, { icon:"⏪" });
         return;
       }
 
@@ -1479,7 +1720,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [moveActive, activeDate, patch]);
+  }, [moveActive, activeDate, patch, data, pushToast]);
 
   const addTask = useCallback((date, subject, chapter, customNote) => {
     const task = { id:uid(), subject, chapter, customNote:customNote?.trim()??"", completed:false, completedAt:null, isRollover:false };
@@ -1503,8 +1744,10 @@ export default function App() {
   }, [patch]);
 
   const clearDoneNotes = useCallback(() => {
+    const count = (data?.notes ?? []).filter(n => n.done).length;
     patch(prev => ({ ...prev, notes:(prev.notes??[]).filter(note => !note.done) }));
-  }, [patch]);
+    if (count) pushToast(`Cleared ${count} done note${count===1?"":"s"}`, { icon:"🧹" });
+  }, [patch, data, pushToast]);
 
   const removeTask = useCallback((date, taskId) => {
     patch(prev => ({ ...prev, days:{ ...prev.days, [date]:{ tasks:(prev.days[date]?.tasks??[]).filter(t=>t.id!==taskId) } } }));
@@ -1518,8 +1761,26 @@ export default function App() {
     });
   }, [patch]);
 
+  // Dropping a notepad tile onto a day column: reuse the same fuzzy chapter
+  // matcher the notepad itself uses, so a chapter-like note lands as a proper
+  // themed task, and a free-form note lands as a plain task with that text.
+  const handleNoteDrop = useCallback((date, payload) => {
+    const text = String(payload?.text ?? "").trim();
+    if (!text) return;
+    const theme   = getChapterTheme(text);
+    const subject = theme.isChapterLike ? theme.match.subject : "Physics";
+    const chapter = theme.isChapterLike ? theme.match.chapter : text;
+    addTask(date, subject, chapter, payload?.note ?? "");
+    pushToast(`Scheduled "${chapter}" → ${fmtDateBig(date)}`, { icon:"📌" });
+  }, [addTask, pushToast]);
+
   const handleSwapFile = async () => {
-    try { const fh=await openFilePicker(); setFileHandle(fh); setData((await readFH(fh))??normalizeData(DEFAULT_DATA())); }
+    try {
+      const fh = await openFilePicker();
+      setFileHandle(fh);
+      setData((await readFH(fh)) ?? normalizeData(DEFAULT_DATA()));
+      pushToast("Switched data file", { icon:"📂" });
+    }
     catch (e) { if (e.name!=="AbortError") console.error(e); }
   };
 
@@ -1557,6 +1818,12 @@ export default function App() {
           <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />
 
           <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+            {saveStatus !== "idle" && (
+              <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, letterSpacing:"0.1em", color: saveStatus==="saving" ? "var(--accent-orange)" : "var(--accent-green)", padding:"0 2px", userSelect:"none" }}>
+                <span style={{ width:6, height:6, borderRadius:"50%", background:"currentColor", flexShrink:0, animation: saveStatus==="saving" ? "pulse 1s ease-in-out infinite" : "none" }} />
+                {saveStatus==="saving" ? "SAVING…" : "SAVED"}
+              </span>
+            )}
             {[{ label:`🔥 ${data.meta?.streakCount??0}d` },{ label:`✓ ${totalDone}` }].map((b,i) => (
               <span key={i} style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>{b.label}</span>
             ))}
@@ -1574,6 +1841,7 @@ export default function App() {
 
         {/* ── BODY ── */}
         <div style={{ position:"relative", flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+          <Toaster toasts={toasts} />
           <HelpPanel    open={showHelp}     onClose={() => setShowHelp(false)} />
           <CalendarOverlay open={showCalendar} onClose={() => setShowCalendar(false)} data={data} activeDate={activeDate} setActiveDate={setActiveDate} />
 
@@ -1612,6 +1880,7 @@ export default function App() {
                     onClick={() => { const d=idx-1; if (d!==0) moveActive(d); }}
                     onToggle={tid => toggleTask(date,tid)}
                     onRemove={tid => removeTask(date,tid)}
+                    onDropNote={payload => handleNoteDrop(date, payload)}
                   />
                 ))}
               </div>
@@ -1634,18 +1903,42 @@ export default function App() {
               </nav>
             </main>
 
-            {/* Mastery Ledger */}
-            <aside style={{ width:"23%", flexShrink:0, background:"var(--bg-base)", borderLeft:"1px solid var(--border-main)", overflow:"hidden", display:"flex", flexDirection:"column" }}>
+            {/* Notepad + Mastery Ledger — resizable vertical split */}
+            <aside ref={asideRef} style={{ width:"23%", flexShrink:0, background:"var(--bg-base)", borderLeft:"1px solid var(--border-main)", overflow:"hidden", display:"flex", flexDirection:"column" }}>
               <NotepadPanel
                 notes={data.notes ?? []}
+                height={notepadHeight}
+                resizing={resizingNotepad}
                 onAddNote={addNote}
                 onToggleNote={toggleNote}
                 onDeleteNote={deleteNote}
                 onClearDone={clearDoneNotes}
               />
-              <div style={{ padding:"10px 14px", fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", borderBottom:"1px solid var(--border-sub)", flexShrink:0, userSelect:"none" }}>MASTERY LEDGER</div>
+
+              <ResizeHandle
+                onResizeDelta={handleNotepadResizeDelta}
+                onReset={resetNotepadHeight}
+                onResizeStart={() => setResizingNotepad(true)}
+                onResizeEnd={() => setResizingNotepad(false)}
+              />
+
+              <div style={{ padding:"10px 14px 8px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                  <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>MASTERY LEDGER</span>
+                  <span style={{ fontSize:10, color:"var(--accent-green)", background:"#3DFC9A15", border:"1px solid #3DFC9A25", borderRadius:5, padding:"1px 7px" }}>{totalDone} logged</span>
+                </div>
+                <div style={{ position:"relative" }}>
+                  <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-60%)", fontSize:12, color:"var(--text-muted)", pointerEvents:"none" }}>🔍</span>
+                  <input value={ledgerSearch} onChange={e=>setLedgerSearch(e.target.value)} placeholder="Search ledger..."
+                    style={{ width:"100%", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, padding:"7px 26px 7px 28px", fontSize:12, color:"var(--text-primary)", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:"var(--accent-cyan)" }}
+                    onFocus={e=>e.currentTarget.style.borderColor="var(--accent-cyan)"}
+                    onBlur={e=>e.currentTarget.style.borderColor="var(--border-main)"}
+                  />
+                  {ledgerSearch && <button onClick={()=>setLedgerSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-60%)", background:"none", border:"none", cursor:"pointer", fontSize:12, color:"var(--text-muted)", padding:0 }}>✕</button>}
+                </div>
+              </div>
               <div style={{ flex:1, overflowY:"auto" }}>
-                <MasteryLedger ledger={masteryLedger} />
+                <MasteryLedger ledger={masteryLedger} search={ledgerSearch} />
               </div>
             </aside>
           </div>
