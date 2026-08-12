@@ -2,7 +2,7 @@
  * JEE Study OS — App.jsx
  */
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from "react";
 
 // ─── GLOBAL STYLES ─────────────────────────────────────────────────────────────
 
@@ -62,12 +62,57 @@ const GLOBAL_CSS = `
 
   .task-card-in { animation: slideUp 0.2s ease forwards; }
   .note-row-in  { animation: slideUp 0.18s ease forwards; }
+  .chapter-row-in { animation: fadeIn 0.15s ease forwards; }
 
   .day-complete-glow { animation: dayGlow 2.6s ease-in-out infinite; }
 
   .day-col-drop-active { outline: 2px dashed var(--accent-cyan) !important; outline-offset: -2px; }
 
+  .task-drop-indicator { height:3px; border-radius:99; background:var(--accent-cyan); margin:2px 2px 8px; box-shadow:0 0 8px 1px #38D9F580; animation: fadeIn 0.1s ease forwards; }
+
+  .task-card-draggable { cursor: grab; }
+  .task-card-draggable:active { cursor: grabbing; }
+
+  .sidebar-rail-btn { transition: background 0.15s, color 0.15s, transform 0.15s; }
+  .sidebar-rail-btn:hover { background: var(--bg-hover) !important; transform: scale(1.08); }
+
   .resize-handle:hover .resize-handle-grip { background: var(--text-sec) !important; }
+
+  /* ── Hero / setup screen ── */
+  @keyframes heroFloat  { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(14px,-18px) scale(1.06); } }
+  @keyframes heroFloat2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-18px,14px) scale(1.08); } }
+  @keyframes heroFloat3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(10px,10px) scale(0.95); } }
+  @keyframes heroTitleIn { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes shimmerSweep { from { transform: translateX(-120%) skewX(-15deg); } to { transform: translateX(220%) skewX(-15deg); } }
+  @keyframes gridDrift { from { background-position: 0 0; } to { background-position: 48px 48px; } }
+
+  .hero-blob-a { animation: heroFloat 9s ease-in-out infinite; }
+  .hero-blob-b { animation: heroFloat2 11s ease-in-out infinite; }
+  .hero-blob-c { animation: heroFloat3 7.5s ease-in-out infinite; }
+  .hero-grid   { animation: gridDrift 6s linear infinite; }
+  .hero-title  { animation: heroTitleIn 0.6s cubic-bezier(0.16,1,0.3,1) forwards; }
+  .hero-sub    { animation: heroTitleIn 0.6s cubic-bezier(0.16,1,0.3,1) 0.08s forwards; opacity:0; }
+  .hero-cta    { animation: heroTitleIn 0.6s cubic-bezier(0.16,1,0.3,1) 0.16s forwards; opacity:0; }
+  .hero-foot   { animation: heroTitleIn 0.6s cubic-bezier(0.16,1,0.3,1) 0.24s forwards; opacity:0; }
+
+  .hero-btn { position:relative; overflow:hidden; transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease; }
+  .hero-btn:hover { transform: translateY(-2px); }
+  .hero-btn::after { content:""; position:absolute; top:0; left:0; width:36%; height:100%; background:linear-gradient(120deg, transparent, rgba(255,255,255,0.16), transparent); transform:translateX(-120%) skewX(-15deg); }
+  .hero-btn:hover::after { animation: shimmerSweep 0.9s ease; }
+
+  .day-header-hover { transition: filter 0.15s; }
+  .day-header-hover:hover { filter: brightness(1.06); }
+
+  .press-scale { transition: transform 0.1s ease, color 0.15s, border-color 0.15s, background 0.15s; }
+  .press-scale:active { transform: scale(0.94); }
+
+  @keyframes countBump { 0% { transform:scale(1); } 40% { transform:scale(1.18); } 100% { transform:scale(1); } }
+  .count-bump { animation: countBump 0.32s cubic-bezier(0.34,1.56,0.64,1); }
+
+  ::-webkit-scrollbar { width:9px; height:9px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border-main); border-radius:99px; border:2px solid var(--bg-base); }
+  ::-webkit-scrollbar-thumb:hover { background:var(--text-dim); }
 `;
 
 function InjectStyles() {
@@ -84,6 +129,22 @@ function InjectStyles() {
 // Lightweight, self-contained feedback system used for anything that happens
 // off-screen or via keyboard shortcut / drag-drop, so actions always feel
 // acknowledged. See <Toaster/> for rendering.
+
+// Brief scale-pulse whenever a numeric value changes — used on header badges
+// so completing a task or hitting a streak milestone feels acknowledged.
+function useBump(value) {
+  const [bump, setBump] = useState(false);
+  const prevRef = useRef(value);
+  useEffect(() => {
+    if (prevRef.current !== value) {
+      prevRef.current = value;
+      setBump(true);
+      const t = setTimeout(() => setBump(false), 320);
+      return () => clearTimeout(t);
+    }
+  }, [value]);
+  return bump;
+}
 
 function useToast() {
   const [toasts, setToasts] = useState([]);
@@ -122,17 +183,19 @@ function Toaster({ toasts }) {
 // Generic vertical drag-to-resize divider. Drag to resize, double-click to
 // reset to the default size. Used between the Notepad and Mastery Ledger.
 
-function ResizeHandle({ onResizeDelta, onReset, onResizeStart, onResizeEnd }) {
+function ResizeHandle({ axis = "y", onResizeDelta, onReset, onResizeStart, onResizeEnd }) {
   const draggingRef = useRef(false);
-  const lastYRef = useRef(0);
+  const lastPosRef  = useRef(0);
   const [active, setActive] = useState(false);
+  const isX = axis === "x";
 
   useEffect(() => {
     const handleMove = (e) => {
       if (!draggingRef.current) return;
-      const dy = e.clientY - lastYRef.current;
-      lastYRef.current = e.clientY;
-      onResizeDelta(dy);
+      const pos = isX ? e.clientX : e.clientY;
+      const d = pos - lastPosRef.current;
+      lastPosRef.current = pos;
+      onResizeDelta(d);
     };
     const handleUp = () => {
       if (!draggingRef.current) return;
@@ -148,14 +211,14 @@ function ResizeHandle({ onResizeDelta, onReset, onResizeStart, onResizeEnd }) {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [onResizeDelta, onResizeEnd]);
+  }, [onResizeDelta, onResizeEnd, isX]);
 
   const handleMouseDown = (e) => {
     e.preventDefault();
     draggingRef.current = true;
-    lastYRef.current = e.clientY;
+    lastPosRef.current = isX ? e.clientX : e.clientY;
     setActive(true);
-    document.body.style.cursor = "row-resize";
+    document.body.style.cursor = isX ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
     onResizeStart?.();
   };
@@ -166,7 +229,13 @@ function ResizeHandle({ onResizeDelta, onReset, onResizeStart, onResizeEnd }) {
       onMouseDown={handleMouseDown}
       onDoubleClick={onReset}
       title="Drag to resize · double-click to reset"
-      style={{
+      style={isX ? {
+        flexShrink:0, width:9, cursor:"col-resize", position:"relative",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        background: active ? "#38D9F512" : "transparent",
+        borderLeft:"1px solid var(--border-sub)", borderRight:"1px solid var(--border-sub)",
+        transition:"background 0.15s",
+      } : {
         flexShrink:0, height:9, cursor:"row-resize", position:"relative",
         display:"flex", alignItems:"center", justifyContent:"center",
         background: active ? "#38D9F512" : "transparent",
@@ -176,7 +245,9 @@ function ResizeHandle({ onResizeDelta, onReset, onResizeStart, onResizeEnd }) {
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "var(--bg-hover)"; }}
       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
     >
-      <div className="resize-handle-grip" style={{ width:28, height:3, borderRadius:99, background: active ? "var(--accent-cyan)" : "var(--border-main)", transition:"background 0.15s" }} />
+      <div className="resize-handle-grip" style={isX
+        ? { width:3, height:28, borderRadius:99, background: active ? "var(--accent-cyan)" : "var(--border-main)", transition:"background 0.15s" }
+        : { width:28, height:3, borderRadius:99, background: active ? "var(--accent-cyan)" : "var(--border-main)", transition:"background 0.15s" }} />
     </div>
   );
 }
@@ -454,22 +525,40 @@ function SetupScreen({ onReady }) {
     catch (e) { if (e.name !== "AbortError") setError(e.message); }
   };
   return (
-    <div style={{ minHeight:"100vh", background:"var(--bg-base)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2.5rem", fontFamily:"'JetBrains Mono', monospace", padding:"0 1.5rem" }}>
-      <div style={{ textAlign:"center" }}>
+    <div style={{ position:"relative", minHeight:"100vh", background:"var(--bg-base)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2.5rem", fontFamily:"'JetBrains Mono', monospace", padding:"0 1.5rem", overflow:"hidden" }}>
+
+      {/* Ambient background: drifting grid + floating gradient blobs */}
+      <div className="hero-grid" style={{ position:"absolute", inset:0, backgroundImage:"linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)", backgroundSize:"48px 48px", pointerEvents:"none" }} />
+      <div className="hero-blob-a" style={{ position:"absolute", top:"12%", left:"18%", width:340, height:340, borderRadius:"50%", background:"radial-gradient(circle, #38D9F522, transparent 70%)", filter:"blur(10px)", pointerEvents:"none" }} />
+      <div className="hero-blob-b" style={{ position:"absolute", bottom:"14%", right:"16%", width:300, height:300, borderRadius:"50%", background:"radial-gradient(circle, #B084FC22, transparent 70%)", filter:"blur(10px)", pointerEvents:"none" }} />
+      <div className="hero-blob-c" style={{ position:"absolute", top:"52%", right:"32%", width:220, height:220, borderRadius:"50%", background:"radial-gradient(circle, #3DFC9A1C, transparent 70%)", filter:"blur(10px)", pointerEvents:"none" }} />
+      <div style={{ position:"absolute", inset:0, background:"radial-gradient(ellipse at 50% 40%, transparent 0%, var(--bg-base) 78%)", pointerEvents:"none" }} />
+
+      <div className="hero-title" style={{ textAlign:"center", position:"relative", opacity:0 }}>
         <p style={{ fontSize:11, letterSpacing:"0.5em", color:"var(--text-muted)", marginBottom:16, textTransform:"uppercase" }}>JEE Study OS</p>
-        <h1 style={{ fontSize:52, fontWeight:800, color:"var(--text-primary)", fontFamily:"'Space Grotesk', sans-serif", letterSpacing:"-0.03em", lineHeight:1 }}>Command Center</h1>
-        <p style={{ fontSize:14, color:"var(--text-sec)", marginTop:12 }}>Zero-friction. Total control. All local.</p>
+        <h1 style={{
+          fontSize:56, fontWeight:800, fontFamily:"'Space Grotesk', sans-serif", letterSpacing:"-0.03em", lineHeight:1,
+          backgroundImage:"linear-gradient(100deg, var(--text-primary) 30%, var(--accent-cyan) 62%, var(--accent-purple) 100%)",
+          WebkitBackgroundClip:"text", backgroundClip:"text", color:"transparent",
+        }}>Command Center</h1>
       </div>
+
+      <p className="hero-sub" style={{ fontSize:14, color:"var(--text-sec)", marginTop:-28, textAlign:"center" }}>Zero-friction. Total control. All local.</p>
+
       {fsaSupported() ? (
-        <div style={{ display:"flex", gap:12 }}>
-          <button onClick={handleOpen} style={{ padding:"12px 24px", fontSize:13, color:"var(--accent-cyan)", border:"1px solid var(--accent-cyan)", background:"var(--accent-cyan)12", borderRadius:10, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>📂 Open Data File</button>
-          <button onClick={handleCreate} style={{ padding:"12px 24px", fontSize:13, color:"var(--accent-purple)", border:"1px solid var(--accent-purple)", background:"var(--accent-purple)12", borderRadius:10, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>✨ Create New File</button>
+        <div className="hero-cta" style={{ display:"flex", gap:12 }}>
+          <button className="hero-btn" onClick={handleOpen} style={{ padding:"12px 24px", fontSize:13, color:"var(--accent-cyan)", border:"1px solid var(--accent-cyan)", background:"var(--accent-cyan)12", borderRadius:10, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", boxShadow:"0 0 0 0 transparent" }}
+            onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px -8px #38D9F560"} onMouseLeave={e=>e.currentTarget.style.boxShadow="0 0 0 0 transparent"}
+          >📂 Open Data File</button>
+          <button className="hero-btn" onClick={handleCreate} style={{ padding:"12px 24px", fontSize:13, color:"var(--accent-purple)", border:"1px solid var(--accent-purple)", background:"var(--accent-purple)12", borderRadius:10, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", boxShadow:"0 0 0 0 transparent" }}
+            onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px -8px #B084FC60"} onMouseLeave={e=>e.currentTarget.style.boxShadow="0 0 0 0 transparent"}
+          >✨ Create New File</button>
         </div>
       ) : (
-        <div style={{ color:"var(--accent-red)", fontSize:13, textAlign:"center", maxWidth:380 }}>⚠ Browser does not support File System Access API.<br/>Use Chrome 86+ or Edge 86+.</div>
+        <div className="hero-cta" style={{ color:"var(--accent-red)", fontSize:13, textAlign:"center", maxWidth:380 }}>⚠ Browser does not support File System Access API.<br/>Use Chrome 86+ or Edge 86+.</div>
       )}
-      {error && <p style={{ color:"var(--accent-red)", fontSize:12 }}>{error}</p>}
-      <p style={{ fontSize:11, color:"var(--text-muted)", maxWidth:280, textAlign:"center", lineHeight:1.7 }}>All data stays on your machine — no accounts, no servers.</p>
+      {error && <p style={{ color:"var(--accent-red)", fontSize:12, position:"relative" }}>{error}</p>}
+      <p className="hero-foot" style={{ fontSize:11, color:"var(--text-muted)", maxWidth:280, textAlign:"center", lineHeight:1.7 }}>All data stays on your machine — no accounts, no servers.</p>
     </div>
   );
 }
@@ -716,22 +805,151 @@ function CommandBar({ activeDate, onAddTask, cmdRef }) {
   );
 }
 
+// ─── SYLLABUS SEARCH BAR (unified) ─────────────────────────────────────────────
+// Same smart-input language as the Notepad and Command Bar: "phy waves /verma"
+// — chapter fuzzy-matched, "/note" carried as optional detail. Enter adds it to
+// the active day; dragging a suggestion (or any tree row) drops it straight
+// into the Notepad or onto a calendar day, note and all.
+
+function SyllabusSearchBar({ onAddNote, onQueryChange }) {
+  const [val,     setVal]     = useState("");
+  const [selIdx,  setSelIdx]  = useState(0);
+  const [focused, setFocused] = useState(false);
+  const [toast,   setToast]   = useState(null);
+  const toastRef = useRef(null);
+  const parsed = useMemo(() => (val.trim() ? parseCommand(val) : null), [val]);
+
+  useEffect(() => { onQueryChange?.(parsed?.chapterQuery ?? ""); }, [parsed, onQueryChange]);
+
+  const showToast = (msg) => { setToast(msg); clearTimeout(toastRef.current); toastRef.current = setTimeout(() => setToast(null), 1700); };
+
+  // Enter / click here queues the chapter into the Notepad shortlist — it
+  // does NOT schedule it onto a day. To put something on a specific day,
+  // drag it (from here, or from the Notepad) onto that day's column.
+  const commit = (p) => {
+    if (!p) return;
+    onAddNote(p.chapter, p.note ?? "");
+    showToast(`✓ ${p.chapter} → Notepad`);
+    setVal(""); setSelIdx(0);
+  };
+
+  const handleTab = (e) => {
+    if (!parsed?.ranked?.length) return;
+    e.preventDefault();
+    const pick = parsed.ranked[selIdx] ?? parsed.ranked[0];
+    const subjectPart = parsed.subjectFilter ? (Object.entries(SUBJECT_ALIASES).find(([,v]) => v === parsed.subjectFilter)?.[0] ?? "") + " " : "";
+    const notePart = parsed.note ? " /" + parsed.note : "";
+    setVal(subjectPart + pick.chapter + notePart);
+    setSelIdx(0);
+  };
+
+  const handleKeyDown = (e) => {
+    if (parsed?.ranked?.length) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setSelIdx(i => Math.min(i+1, parsed.ranked.length-1)); return; }
+      if (e.key === "ArrowUp")   { e.preventDefault(); setSelIdx(i => Math.max(i-1, 0)); return; }
+    }
+    if (e.key === "Tab")     { handleTab(e); return; }
+    if (e.key === "Escape")  { setVal(""); e.currentTarget.blur(); return; }
+    if (e.key !== "Enter" || !val.trim()) return;
+    e.preventDefault();
+    if (parsed?.ranked?.length) commit({ ...parsed, subject: parsed.ranked[selIdx]?.subject ?? parsed.subject, chapter: parsed.ranked[selIdx]?.chapter ?? parsed.chapter });
+    else commit(parsed);
+  };
+
+  const pickSuggestion = (entry) => commit({ ...parsed, subject: entry.subject, chapter: entry.chapter });
+
+  const cfg = parsed ? (S[parsed.subject] ?? S.Physics) : null;
+  const showDropdown = focused && parsed && val.trim().length >= 1 && parsed.ranked.length > 0;
+
+  return (
+    <div style={{ position:"relative" }}>
+      <div style={{
+        display:"flex", alignItems:"center", gap:6, background:"var(--bg-elevated)",
+        border:`1px solid ${focused ? (cfg?.accentBorder ?? "var(--accent-cyan)") : "var(--border-main)"}`,
+        borderRadius:8, padding:"6px 9px", transition:"border-color 0.15s, box-shadow 0.15s",
+        boxShadow: focused ? `0 0 0 2px ${cfg?.accent ?? "#38D9F5"}18` : "none",
+      }}>
+        <span style={{ fontSize:12, color:"var(--text-muted)", flexShrink:0 }}>🔍</span>
+        <input
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setFocused(false), 150)}
+          placeholder="Search syllabus · phy waves /verma"
+          style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", fontSize:12, color:"var(--text-primary)", fontFamily:"'JetBrains Mono', monospace", caretColor:cfg?.accent ?? "var(--accent-cyan)" }}
+        />
+        {val && <button onClick={() => setVal("")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"var(--text-muted)", padding:0, flexShrink:0 }}>✕</button>}
+      </div>
+
+      {showDropdown && (
+        <div className="cmd-dropdown" style={{ position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:100, background:"var(--bg-elevated)", border:`1px solid ${cfg?.accentBorder ?? "var(--border-main)"}`, borderRadius:10, overflow:"hidden", boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
+          {parsed.ranked.map((entry, i) => {
+            const ec = S[entry.subject];
+            const isHighlighted = i === selIdx;
+            return (
+              <div
+                key={entry.chapter + entry.subject}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "copy";
+                  e.dataTransfer.setData("application/x-jee-tile", JSON.stringify({ text:entry.chapter, note:parsed.note ?? "", subject:entry.subject }));
+                  e.dataTransfer.setData("text/plain", entry.chapter);
+                }}
+                onClick={() => pickSuggestion(entry)}
+                onMouseEnter={() => setSelIdx(i)}
+                style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:isHighlighted?"var(--bg-hover)":"transparent", cursor:"grab", borderBottom:i<parsed.ranked.length-1?"1px solid var(--border-sub)":"none", transition:"background 0.08s" }}
+              >
+                <span style={{ fontSize:10, color:"var(--text-dim)", flexShrink:0 }}>⠿</span>
+                <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:ec.accent, background:ec.accentBg, border:`1px solid ${ec.accentBorder}`, borderRadius:5, padding:"2px 6px", flexShrink:0 }}>{ec.label}</span>
+                <span style={{ flex:1, fontSize:12, color:isHighlighted?"var(--text-primary)":"var(--text-sec)" }}>{entry.chapter}</span>
+                {isHighlighted && <span style={{ fontSize:9, color:"var(--text-muted)" }}>↵</span>}
+              </div>
+            );
+          })}
+          <div style={{ padding:"5px 12px", borderTop:"1px solid var(--border-sub)", display:"flex", gap:6, alignItems:"center", background:"var(--bg-surface)" }}>
+            <span style={{ fontSize:8, color:"var(--text-muted)", letterSpacing:"0.12em", flexShrink:0 }}>DRAG TO SCHEDULE · ↵ QUEUES IT</span>
+            {parsed.note && <span style={{ fontSize:9, color:"var(--text-muted)" }}>/ {parsed.note}</span>}
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div style={{ position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:99, textAlign:"center", pointerEvents:"none", animation:"slideUp 0.15s ease forwards" }}>
+          <span style={{ fontSize:11, color:"var(--accent-green)", background:"var(--bg-elevated)", border:"1px solid var(--accent-green)40", borderRadius:8, padding:"4px 12px", display:"inline-block", boxShadow:"0 4px 16px rgba(0,0,0,0.4)" }}>{toast}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── CHAPTER ROW ───────────────────────────────────────────────────────────────
 
 function ChapterRow({ subject, chapter, activeDate, onAddTask }) {
   const [hovered, setHovered] = useState(false);
   const [showInput, setShow]  = useState(false);
   const [note, setNote]       = useState("");
+  const [dragging, setDragging] = useState(false);
   const inputRef              = useRef(null);
   const { accent, accentBg, accentBorder } = S[subject];
   useEffect(() => { if (showInput) inputRef.current?.focus(); }, [showInput]);
   const commit = () => { onAddTask(activeDate, subject, chapter, note.trim()); setNote(""); setShow(false); };
 
   return (
-    <div>
-      <div onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-        style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 10px 5px 28px", background:hovered?"var(--bg-hover)":"transparent", transition:"background 0.12s", cursor:"default", position:"relative" }}>
+    <div className="chapter-row-in">
+      <div
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "copy";
+          e.dataTransfer.setData("application/x-jee-tile", JSON.stringify({ text:chapter, note:"", subject }));
+          e.dataTransfer.setData("text/plain", chapter);
+          setDragging(true);
+        }}
+        onDragEnd={() => setDragging(false)}
+        onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+        style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 10px 5px 28px", background:hovered?"var(--bg-hover)":"transparent", opacity:dragging?0.4:1, transition:"background 0.12s, opacity 0.15s", cursor:"grab", position:"relative" }}>
         <div style={{ position:"absolute", left:16, top:"50%", width:8, height:1, background:"var(--border-sub)", transform:"translateY(-50%)" }} />
+        <span title="Drag onto a day to schedule" style={{ flexShrink:0, fontSize:11, color:"var(--text-dim)", userSelect:"none" }}>⠿</span>
         <span style={{ flex:1, fontSize:12, lineHeight:1.5, color:hovered?"var(--text-primary)":"var(--text-sec)", transition:"color 0.12s" }}>{chapter}</span>
         {hovered && (
           <button onClick={() => setShow(true)} style={{ color:accent, background:accentBg, border:`1px solid ${accentBorder}`, fontSize:12, padding:"1px 8px", borderRadius:6, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>+</button>
@@ -840,12 +1058,38 @@ function SubjectTree({ subject, classes, activeDate, onAddTask, searchQ }) {
 
 // ─── TASK CARD ─────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, onToggle, onRemove }) {
+function TaskCard({ task, onToggle, onRemove, onEditNote, draggable = true, dimmed = false, onDragStart, onDragEnd, onDragOver }) {
   const cfg = S[task.subject] ?? S.Physics;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState(task.customNote ?? "");
+  const [hovered, setHovered] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { if (editing) { setDraft(task.customNote ?? ""); requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.select(); }); } }, [editing]);
+
+  const commitNote = () => { onEditNote?.(draft.trim()); setEditing(false); };
+  const cancelNote = () => setEditing(false);
+
   return (
-    <div className="task-card-in" style={{ background:task.completed?"var(--bg-surface)":"var(--bg-elevated)", border:`1px solid ${task.completed?"var(--border-sub)":cfg.accentBorder}`, opacity:task.completed?0.55:1, borderRadius:10, padding:"10px 12px", marginBottom:8, transition:"all 0.2s" }}>
+    <div
+      className="task-card-in"
+      draggable={draggable && !editing}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background:task.completed?"var(--bg-surface)":"var(--bg-elevated)",
+        border:`1px solid ${task.completed?"var(--border-sub)":cfg.accentBorder}`,
+        opacity:dimmed?0.35:task.completed?0.55:1, borderRadius:10, padding:"10px 12px", marginBottom:8,
+        transition:"transform 0.15s, box-shadow 0.15s, opacity 0.15s, background 0.2s",
+        transform: hovered && !task.completed && !editing ? "translateY(-2px)" : "translateY(0)",
+        boxShadow: hovered && !task.completed && !editing ? "0 10px 22px -8px rgba(0,0,0,0.5)" : "none",
+        cursor: draggable && !editing ? "grab" : "default",
+      }}>
       <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-        <button onClick={onToggle} style={{ marginTop:2, width:18, height:18, borderRadius:5, flexShrink:0, border:`2px solid ${task.completed?cfg.accent:cfg.accentBorder}`, background:task.completed?cfg.accent+"30":"transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s" }}>
+        <button onClick={onToggle} className="press-scale" style={{ marginTop:2, width:18, height:18, borderRadius:5, flexShrink:0, border:`2px solid ${task.completed?cfg.accent:cfg.accentBorder}`, background:task.completed?cfg.accent+"30":"transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s" }}>
           {task.completed && <span style={{ color:cfg.accent, fontSize:10, lineHeight:1 }}>✓</span>}
         </button>
         <div style={{ flex:1, minWidth:0 }}>
@@ -854,7 +1098,26 @@ function TaskCard({ task, onToggle, onRemove }) {
             {task.isRollover && <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.14em", borderRadius:5, padding:"2px 6px", color:"#FF9F43", background:"#FF9F4315", border:"1px solid #FF9F4340" }}>ROLLOVER</span>}
           </div>
           <p style={{ fontSize:13, lineHeight:1.4, color:task.completed?"var(--text-muted)":"var(--text-primary)", textDecoration:task.completed?"line-through":"none", margin:0 }}>{task.chapter}</p>
-          {task.customNote && <p style={{ fontSize:12, marginTop:3, lineHeight:1.4, color:task.completed?"var(--text-muted)":"var(--text-sec)", textDecoration:task.completed?"line-through":"none", margin:"3px 0 0" }}>{task.customNote}</p>}
+
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onMouseDown={e => e.stopPropagation()}
+              onKeyDown={e => { if (e.key==="Enter") commitNote(); if (e.key==="Escape") cancelNote(); }}
+              onBlur={commitNote}
+              placeholder="Optional note"
+              style={{ width:"100%", marginTop:4, background:"var(--bg-surface)", border:`1px solid ${cfg.accentBorder}`, borderRadius:6, fontSize:12, color:"var(--text-primary)", padding:"4px 7px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:cfg.accent }}
+            />
+          ) : task.customNote ? (
+            <p onClick={() => !task.completed && setEditing(true)} title={task.completed?undefined:"Click to edit note"}
+              style={{ fontSize:12, marginTop:3, lineHeight:1.4, color:task.completed?"var(--text-muted)":"var(--text-sec)", textDecoration:task.completed?"line-through":"none", margin:"3px 0 0", cursor:task.completed?"default":"text" }}>
+              {task.customNote}
+            </p>
+          ) : (!task.completed && hovered) ? (
+            <p onClick={() => setEditing(true)} style={{ fontSize:11, marginTop:3, lineHeight:1.4, color:"var(--text-dim)", fontStyle:"italic", margin:"3px 0 0", cursor:"text" }}>+ add note</p>
+          ) : null}
         </div>
         <button onClick={onRemove} style={{ marginTop:1, borderRadius:6, border:"1px solid #3A2230", background:"#1E0E18", padding:"2px 7px", fontSize:10, letterSpacing:"0.12em", color:"#FF8FA3", cursor:"pointer", transition:"all 0.12s", fontFamily:"'JetBrains Mono', monospace" }}
           onMouseEnter={e => { e.currentTarget.style.background="#2E1020"; e.currentTarget.style.color="#FFD5DD"; }}
@@ -867,7 +1130,7 @@ function TaskCard({ task, onToggle, onRemove }) {
 
 // ─── DAY COLUMN ────────────────────────────────────────────────────────────────
 
-function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove, onDropNote }) {
+function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove, onEditNote, onDropTile, onMoveTask }) {
   const done = tasks.filter(t => t.completed).length;
   const pct  = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const isComplete = tasks.length > 0 && pct === 100;
@@ -875,28 +1138,46 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
   const diffDays = Math.round((new Date(date+"T00:00:00") - new Date(today+"T00:00:00")) / 86400000);
   const dayLabel = isToday ? "TODAY" : diffDays===-1 ? "YESTERDAY" : diffDays===1 ? "TOMORROW" : `${diffDays>0?"+":""}${diffDays}d`;
 
-  const [dragOver, setDragOver] = useState(false);
-  const dragCounter = useRef(0);
+  const [dragOverTile, setDragOverTile] = useState(false); // whole-column highlight for tile drops
+  const dragCounterTile = useRef(0);
+  const [dragOverIndex, setDragOverIndex] = useState(null); // task reorder insertion point
+  const [draggingTaskId, setDraggingTaskId] = useState(null);
 
-  const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; };
+  const isTileDrag = (e) => e.dataTransfer.types.includes("application/x-jee-tile");
+  const isTaskDrag = (e) => e.dataTransfer.types.includes("application/x-jee-task");
+
+  const handleDragOver = (e) => { if (isTileDrag(e) || isTaskDrag(e)) { e.preventDefault(); e.dataTransfer.dropEffect = isTaskDrag(e) ? "move" : "copy"; } };
   const handleDragEnter = (e) => {
-    if (!e.dataTransfer.types.includes("application/x-jee-note")) return;
+    if (!isTileDrag(e)) return;
     e.preventDefault();
-    dragCounter.current += 1;
-    setDragOver(true);
+    dragCounterTile.current += 1;
+    setDragOverTile(true);
   };
   const handleDragLeave = (e) => {
+    if (!isTileDrag(e)) return;
     e.preventDefault();
-    dragCounter.current = Math.max(0, dragCounter.current - 1);
-    if (dragCounter.current === 0) setDragOver(false);
+    dragCounterTile.current = Math.max(0, dragCounterTile.current - 1);
+    if (dragCounterTile.current === 0) setDragOverTile(false);
   };
   const handleDrop = (e) => {
     e.preventDefault();
-    dragCounter.current = 0;
-    setDragOver(false);
-    const raw = e.dataTransfer.getData("application/x-jee-note");
-    if (!raw) return;
-    try { onDropNote?.(JSON.parse(raw)); } catch { /* ignore malformed payload */ }
+    if (isTileDrag(e)) {
+      dragCounterTile.current = 0;
+      setDragOverTile(false);
+      const raw = e.dataTransfer.getData("application/x-jee-tile");
+      if (raw) { try { onDropTile?.(JSON.parse(raw)); } catch { /* ignore malformed payload */ } }
+      return;
+    }
+    if (isTaskDrag(e)) {
+      const raw = e.dataTransfer.getData("application/x-jee-task");
+      if (raw) {
+        try {
+          const { taskId, fromDate } = JSON.parse(raw);
+          onMoveTask?.(taskId, fromDate, date, dragOverIndex ?? tasks.length);
+        } catch { /* ignore malformed payload */ }
+      }
+      setDragOverIndex(null);
+    }
   };
 
   return (
@@ -906,10 +1187,10 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={dragOver ? "day-col-drop-active" : undefined}
-      style={{ flex:1, display:"flex", flexDirection:"column", borderRight:"1px solid var(--border-sub)", cursor:"pointer", transition:"background 0.15s", overflow:"hidden", background:dragOver?"#38D9F510":isActive?"linear-gradient(180deg,#0D1828 0%,var(--bg-base) 100%)":"var(--bg-base)", boxShadow:isActive?"inset 1px 0 0 #38D9F525,inset -1px 0 0 #38D9F525":"none" }}
+      className={dragOverTile ? "day-col-drop-active" : undefined}
+      style={{ flex:1, display:"flex", flexDirection:"column", borderRight:"1px solid var(--border-sub)", cursor:"pointer", transition:"background 0.15s", overflow:"hidden", background:dragOverTile?"#38D9F510":isActive?"linear-gradient(180deg,#0D1828 0%,var(--bg-base) 100%)":"var(--bg-base)", boxShadow:isActive?"inset 1px 0 0 #38D9F525,inset -1px 0 0 #38D9F525":"none" }}
     >
-      <div className={isComplete ? "day-complete-glow" : undefined} style={{ padding:"16px 16px 12px", flexShrink:0, background:isActive?"#0D1828":isToday?"var(--accent-orange)15":"transparent", borderBottom:`1px solid ${isComplete?"var(--accent-green)60":isActive?"#38D9F530":isToday?"var(--accent-orange)":"var(--border-sub)"}` }}>
+      <div className={`day-header-hover${isComplete ? " day-complete-glow" : ""}`} style={{ padding:"16px 16px 12px", flexShrink:0, background:isActive?"#0D1828":isToday?"var(--accent-orange)15":"transparent", borderBottom:`1px solid ${isComplete?"var(--accent-green)60":isActive?"#38D9F530":isToday?"var(--accent-orange)":"var(--border-sub)"}` }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
           <span style={{ fontSize:10, fontWeight:700, letterSpacing:"0.25em", color:isActive?"var(--accent-cyan)":isToday?"var(--accent-orange)":"var(--text-muted)", background:isActive?"#38D9F515":isToday?"var(--accent-orange)15":"transparent", borderRadius:5, padding:isActive?"2px 7px":"0" }}>{dayLabel}</span>
           <span style={{ fontSize:10, color:pct===100?"var(--accent-green)":"var(--text-sec)" }}>{done}/{tasks.length}</span>
@@ -926,12 +1207,45 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
         </div>
         {tasks.length > 0 && <div style={{ fontSize:11, color:pct===100?"var(--accent-green)":"var(--text-muted)", marginTop:4 }}>{pct===100?"✓ day complete":`${pct}% complete`}</div>}
       </div>
-      <div onClick={e => e.stopPropagation()} style={{ flex:1, overflowY:"auto", padding:"12px 10px" }}>
+      <div
+        onClick={e => e.stopPropagation()}
+        onDragLeave={(e) => { if (isTaskDrag(e) && !e.currentTarget.contains(e.relatedTarget)) setDragOverIndex(null); }}
+        style={{ flex:1, overflowY:"auto", padding:"12px 10px" }}
+      >
         {tasks.length === 0 ? (
-          <p style={{ fontSize:12, color:dragOver?"var(--accent-cyan)":"var(--text-dim)", textAlign:"center", marginTop:40, lineHeight:1.7, transition:"color 0.15s" }}>
-            {dragOver ? <>↓ drop to schedule here</> : <>— no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>hover a chapter → + · drag a note in</span></>}</>}
+          <p style={{ fontSize:12, color:dragOverTile?"var(--accent-cyan)":"var(--text-dim)", textAlign:"center", marginTop:40, lineHeight:1.7, transition:"color 0.15s" }}>
+            {dragOverTile ? <>↓ drop to schedule here</> : <>— no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>hover a chapter → + · drag a tile in</span></>}</>}
           </p>
-        ) : tasks.map(t => <TaskCard key={t.id} task={t} onToggle={() => onToggle(t.id)} onRemove={() => onRemove(t.id)} />)}
+        ) : (
+          <>
+            {tasks.map((t, i) => (
+              <Fragment key={t.id}>
+                {dragOverIndex === i && <div className="task-drop-indicator" />}
+                <TaskCard
+                  task={t}
+                  dimmed={draggingTaskId === t.id}
+                  onToggle={() => onToggle(t.id)}
+                  onRemove={() => onRemove(t.id)}
+                  onEditNote={(note) => onEditNote(t.id, note)}
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("application/x-jee-task", JSON.stringify({ taskId:t.id, fromDate:date }));
+                    setDraggingTaskId(t.id);
+                  }}
+                  onDragEnd={() => { setDraggingTaskId(null); setDragOverIndex(null); }}
+                  onDragOver={(e) => {
+                    if (!isTaskDrag(e)) return;
+                    e.preventDefault(); e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const before = e.clientY < rect.top + rect.height / 2;
+                    setDragOverIndex(before ? i : i + 1);
+                  }}
+                />
+              </Fragment>
+            ))}
+            {dragOverIndex === tasks.length && <div className="task-drop-indicator" />}
+          </>
+        )}
       </div>
     </div>
   );
@@ -939,51 +1253,92 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
 
 // ─── MASTERY LEDGER ────────────────────────────────────────────────────────────
 
-function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDeleteNote, onClearDone }) {
-  const [draft, setDraft] = useState("");
-  const [draggingId, setDraggingId] = useState(null);
-  const [selIdx, setSelIdx] = useState(0);
-  const [focused, setFocused] = useState(false);
+// ─── NOTE ROW ──────────────────────────────────────────────────────────────────
+
+function NoteRow({ note, dragging, onDragStart, onDragEnd, onToggle, onDelete, onEditNote }) {
+  const { badgeColor, badgeBg, badgeBorder, badgeText, isChapterLike } = getChapterTheme(note.text);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState(note.note ?? "");
+  const [hovered, setHovered] = useState(false);
   const inputRef = useRef(null);
 
-  const draftParts = useMemo(() => {
-    const slashIdx = draft.indexOf("/");
-    if (slashIdx < 0) return { chapterText:draft.trim(), customNote:"", noteSuffix:"" };
-    const customNote = draft.slice(slashIdx + 1).trim();
-    return {
-      chapterText:draft.slice(0, slashIdx).trim(),
-      customNote,
-      noteSuffix:customNote ? ` / ${customNote}` : " / ",
-    };
-  }, [draft]);
+  useEffect(() => { if (editing) { setDraft(note.note ?? ""); requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.select(); }); } }, [editing]);
 
-  const suggestions = useMemo(() => {
-    const q = draftParts.chapterText;
-    if (!q) return [];
-    return rankChapters(q, null, 5).map((entry) => ({
-      ...entry,
-      cfg: S[entry.subject] ?? S.Physics,
-    }));
-  }, [draftParts.chapterText]);
-  const activeSuggestion = suggestions[selIdx] ?? suggestions[0] ?? null;
-  const primaryAccent = activeSuggestion?.cfg?.accent ?? "var(--accent-orange)";
-  const hasMatches = suggestions.length > 0;
+  const commitNote = () => { onEditNote?.(draft.trim()); setEditing(false); };
+  const cancelNote = () => setEditing(false);
 
-  const commit = (text, customNote = draftParts.customNote) => {
-    const value = text.trim();
-    if (!value) return;
-    onAddNote(value, customNote);
-    setDraft("");
-    setSelIdx(0);
-    inputRef.current?.focus();
-  };
+  return (
+    <div
+      className="note-row-in"
+      draggable={!editing}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onMouseEnter={() => { setHovered(true); }}
+      onMouseLeave={() => setHovered(false)}
+      style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 10px", borderRadius:12, border:`1px solid ${note.done ? "var(--border-sub)" : "var(--border-main)"}`, background:note.done ? "var(--bg-surface)" : "var(--bg-elevated)", opacity:dragging ? 0.35 : (note.done ? 0.72 : 1), transform: hovered && !dragging && !editing ? "translateY(-1px)" : "translateY(0)", transition:"opacity 0.15s, transform 0.15s", cursor: editing ? "default" : "grab" }}
+    >
+      <span title="Drag onto a day (or notepad) to schedule" style={{ flexShrink:0, cursor:"grab", color:"var(--text-dim)", fontSize:12, lineHeight:1, userSelect:"none", padding:"0 1px" }}>⠿</span>
+      <button
+        onClick={onToggle}
+        className="press-scale"
+        aria-label={note.done ? "Mark note as open" : "Mark note as done"}
+        style={{ width:18, height:18, borderRadius:5, flexShrink:0, border:`2px solid ${note.done ? "var(--accent-green)" : "var(--border-main)"}`, background:note.done ? "rgba(61, 252, 154, 0.18)" : "transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}
+      >
+        {note.done && <span style={{ color:"var(--accent-green)", fontSize:10, lineHeight:1 }}>✓</span>}
+      </button>
 
-  const applySuggestion = (entry) => {
-    if (!entry) return;
-    setDraft(entry.chapter + draftParts.noteSuffix);
-    setSelIdx(0);
-    inputRef.current?.focus();
-  };
+      <div style={{ minWidth:0, flex:1, display:"flex", flexDirection:"column", gap:4 }}>
+        <div style={{ display:"flex", gap:6, alignItems:"center", minWidth:0 }}>
+          <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:badgeColor, background:badgeBg, border:`1px solid ${badgeBorder}`, borderRadius:5, padding:"2px 6px", flexShrink:0 }}>
+            {badgeText}
+          </span>
+          <span style={{ fontSize:12, lineHeight:1.45, color:note.done ? "var(--text-muted)" : "var(--text-primary)", textDecoration:note.done ? "line-through" : "none", fontFamily:"'JetBrains Mono', monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+            {note.text}
+          </span>
+        </div>
+
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onMouseDown={e => e.stopPropagation()}
+            onKeyDown={e => { if (e.key==="Enter") commitNote(); if (e.key==="Escape") cancelNote(); }}
+            onBlur={commitNote}
+            placeholder="Optional note"
+            style={{ width:"100%", background:"var(--bg-surface)", border:`1px solid ${badgeBorder}`, borderRadius:6, fontSize:11, color:"var(--text-primary)", padding:"3px 7px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:badgeColor }}
+          />
+        ) : note.note ? (
+          <span onClick={() => !note.done && setEditing(true)} title={note.done?undefined:"Click to edit note"}
+            style={{ fontSize:11, lineHeight:1.45, color:note.done ? "var(--text-muted)" : "var(--text-sec)", textDecoration:note.done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:note.done?"default":"text" }}>
+            {note.note}
+          </span>
+        ) : (!note.done && hovered) ? (
+          <span onClick={() => setEditing(true)} style={{ fontSize:10, color:"var(--text-dim)", fontStyle:"italic", cursor:"text" }}>+ add note</span>
+        ) : (!isChapterLike && (
+          <span style={{ fontSize:10, color:"var(--text-dim)" }}>Free-form reminder</span>
+        ))}
+      </div>
+
+      <button
+        onClick={onDelete}
+        className="press-scale"
+        style={{ flexShrink:0, border:"1px solid #3A2230", background:"#1E0E18", padding:"2px 7px", borderRadius:6, color:"#FF8FA3", fontSize:10, letterSpacing:"0.12em", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "#2E1020"; e.currentTarget.style.color = "#FFD5DD"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = "#1E0E18"; e.currentTarget.style.color = "#FF8FA3"; }}
+      >
+        DEL
+      </button>
+    </div>
+  );
+}
+
+// ─── NOTEPAD ───────────────────────────────────────────────────────────────────
+
+function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDeleteNote, onEditNote, onClearDone, onTaskDrop }) {
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverTile, setDragOverTile] = useState(false);
+  const dragCounterTile = useRef(0);
 
   const sortedNotes = [...notes].sort((a, b) => {
     if (a.done !== b.done) return Number(a.done) - Number(b.done);
@@ -993,13 +1348,39 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
   const pendingCount = notes.filter((note) => !note.done).length;
   const doneCount = notes.length - pendingCount;
 
+  const isTileDrag = (e) => e.dataTransfer.types.includes("application/x-jee-tile");
+  const isTaskDrag = (e) => e.dataTransfer.types.includes("application/x-jee-task");
+
+  const handleDragOver = (e) => { if (isTileDrag(e) || isTaskDrag(e)) { e.preventDefault(); e.dataTransfer.dropEffect = isTaskDrag(e) ? "move" : "copy"; } };
+  const handleDragEnter = (e) => { if (!isTileDrag(e) && !isTaskDrag(e)) return; e.preventDefault(); dragCounterTile.current += 1; setDragOverTile(true); };
+  const handleDragLeave = (e) => { if (!isTileDrag(e) && !isTaskDrag(e)) return; e.preventDefault(); dragCounterTile.current = Math.max(0, dragCounterTile.current - 1); if (dragCounterTile.current === 0) setDragOverTile(false); };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    dragCounterTile.current = 0;
+    setDragOverTile(false);
+    if (isTaskDrag(e)) {
+      const raw = e.dataTransfer.getData("application/x-jee-task");
+      if (raw) { try { const { taskId, fromDate } = JSON.parse(raw); onTaskDrop?.(taskId, fromDate); } catch { /* ignore malformed payload */ } }
+      return;
+    }
+    const raw = e.dataTransfer.getData("application/x-jee-tile");
+    if (!raw) return;
+    try { const tile = JSON.parse(raw); const text = String(tile?.text ?? "").trim(); if (text) onAddNote(text, tile?.note ?? ""); } catch { /* ignore malformed payload */ }
+  };
+
   return (
-    <section style={{ height, flexShrink:0, display:"flex", flexDirection:"column", borderBottom:"1px solid var(--border-sub)", background:"linear-gradient(180deg, rgba(13,19,32,0.98), rgba(8,12,20,0.98))", transition: resizing ? "none" : "height 0.22s cubic-bezier(0.34,1.2,0.64,1)", overflow:"hidden" }}>
+    <section
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={dragOverTile ? "day-col-drop-active" : undefined}
+      style={{ height, flexShrink:0, display:"flex", flexDirection:"column", borderBottom:"1px solid var(--border-sub)", background:dragOverTile?"#38D9F510":"linear-gradient(180deg, rgba(13,19,32,0.98), rgba(8,12,20,0.98))", transition: resizing ? "background 0.15s" : "height 0.22s cubic-bezier(0.34,1.2,0.64,1), background 0.15s", overflow:"hidden" }}>
       <div style={{ padding:"12px 14px 10px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom:10 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
           <div>
             <div style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--accent-orange)", userSelect:"none" }}>TODO NOTEPAD</div>
-            <div style={{ fontSize:12, color:"var(--text-sec)", marginTop:4 }}>Jot chapters down, then drag ⠿ onto a day to schedule it.</div>
+            <div style={{ fontSize:12, color:"var(--text-sec)", marginTop:4 }}>Drag from the syllabus or a day to queue it here · drag ⠿ back out to schedule.</div>
           </div>
           <div style={{ display:"flex", gap:6, flexShrink:0 }}>
             <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:999, padding:"2px 8px" }}>{pendingCount} open</span>
@@ -1007,130 +1388,13 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
           </div>
         </div>
 
-        <div style={{
-          display:"flex",
-          alignItems:"center",
-          gap:8,
-          background:"var(--bg-elevated)",
-          border:`1px solid ${focused && hasMatches ? activeSuggestion?.cfg?.accentBorder ?? "var(--border-main)" : "var(--border-main)"}`,
-          borderRadius:10,
-          padding:"8px 10px",
-          boxShadow: focused ? `0 0 0 2px ${primaryAccent}18` : "none",
-        }}>
-          <span style={{
-            fontSize:9,
-            fontWeight:700,
-            letterSpacing:"0.18em",
-            color: hasMatches ? primaryAccent : "var(--accent-orange)",
-            background: hasMatches ? (activeSuggestion?.cfg?.accentBg ?? "var(--accent-orange)12") : "var(--accent-orange)12",
-            border:`1px solid ${hasMatches ? (activeSuggestion?.cfg?.accentBorder ?? "var(--accent-orange)35") : "var(--accent-orange)35"}`,
-            borderRadius:5,
-            padding:"2px 6px",
-            flexShrink:0,
-          }}>
-            {hasMatches ? (activeSuggestion?.cfg?.label ?? "NOTE") : "NOTE"}
-          </span>
-
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => { setDraft(e.target.value); setSelIdx(0); }}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setTimeout(() => setFocused(false), 120)}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowDown" && suggestions.length) {
-                e.preventDefault();
-                setSelIdx((i) => Math.min(i + 1, suggestions.length - 1));
-                return;
-              }
-              if (e.key === "ArrowUp" && suggestions.length) {
-                e.preventDefault();
-                setSelIdx((i) => Math.max(i - 1, 0));
-                return;
-              }
-              if (e.key === "Tab" && suggestions.length) {
-                e.preventDefault();
-                applySuggestion(activeSuggestion);
-                return;
-              }
-              if (e.key === "Escape") {
-                setDraft("");
-                setSelIdx(0);
-                return;
-              }
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit(suggestions.length ? (activeSuggestion?.chapter ?? draftParts.chapterText) : draftParts.chapterText);
-              }
-            }}
-            placeholder="Type chapters / optional note..."
-            style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", color:"var(--text-primary)", fontSize:12, fontFamily:"'JetBrains Mono', monospace", caretColor: hasMatches ? primaryAccent : "var(--accent-orange)" }}
-          />
-
-          {draft && !hasMatches && (
-            <span style={{ fontSize:9, color:"var(--accent-orange)", background:"var(--accent-orange)12", border:"1px solid var(--accent-orange)30", borderRadius:5, padding:"2px 6px", letterSpacing:"0.12em", flexShrink:0 }}>
-              FREE NOTE
-            </span>
-          )}
-        </div>
-
-        {focused && draftParts.chapterText && (
-          <div style={{ marginTop:6, border:"1px solid var(--border-sub)", borderRadius:12, overflow:"hidden", background:"var(--bg-elevated)", boxShadow:"0 16px 32px rgba(0,0,0,0.35)" }}>
-            {hasMatches ? (
-              suggestions.map((entry, index) => {
-                const isActive = index === selIdx;
-                return (
-                  <div
-                    key={`${entry.subject}|${entry.chapter}`}
-                    onMouseDown={() => applySuggestion(entry)}
-                    onMouseEnter={() => setSelIdx(index)}
-                    style={{
-                      display:"flex",
-                      alignItems:"center",
-                      gap:8,
-                      padding:"7px 12px",
-                      cursor:"pointer",
-                      background:isActive ? "var(--bg-hover)" : "transparent",
-                      borderBottom:index < suggestions.length - 1 ? "1px solid var(--border-sub)" : "none",
-                    }}
-                  >
-                    <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:entry.cfg.accent, background:entry.cfg.accentBg, border:`1px solid ${entry.cfg.accentBorder}`, borderRadius:5, padding:"2px 6px", flexShrink:0 }}>
-                      {entry.cfg.label}
-                    </span>
-                    <span style={{ flex:1, minWidth:0, fontSize:13, color:isActive ? "var(--text-primary)" : "var(--text-sec)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                      {entry.chapter}
-                    </span>
-                    <span style={{ fontSize:9, color:"var(--text-muted)", flexShrink:0 }}>
-                      Tab
-                    </span>
-                  </div>
-                );
-              })
-            ) : (
-              <div style={{ padding:"10px 12px", display:"flex", alignItems:"center", gap:8 }}>
-                <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:"var(--accent-orange)", background:"var(--accent-orange)12", border:"1px solid var(--accent-orange)30", borderRadius:5, padding:"2px 6px", flexShrink:0 }}>
-                  FREE NOTE
-                </span>
-                <span style={{ fontSize:12, color:"var(--text-sec)" }}>No chapter match, keep your text exactly as typed.</span>
-              </div>
-            )}
-            <div style={{ padding:"8px 12px", borderTop:"1px solid var(--border-sub)", background:"var(--bg-surface)", display:"flex", justifyContent:"space-between", gap:8 }}>
-              <span style={{ fontSize:9, color:"var(--text-muted)", letterSpacing:"0.14em" }}>
-                Tab = autocomplete · / adds detail · Enter = save note
-              </span>
-              <span style={{ fontSize:10, color: hasMatches ? primaryAccent : "var(--accent-orange)" }}>
-                {hasMatches ? `MATCH ${activeSuggestion?.chapter ?? ""}` : "FREE TEXT"}
-              </span>
-            </div>
-          </div>
-        )}
-
         {notes.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginTop:10 }}>
             <span style={{ fontSize:10, color:"var(--text-dim)", letterSpacing:"0.12em" }}>CHECK A NOTE TO MARK IT DONE</span>
             <button
               onClick={onClearDone}
-              style={{ border:"1px solid var(--border-main)", background:"transparent", borderRadius:8, padding:"5px 10px", color:"var(--text-sec)", cursor:"pointer", fontSize:10, letterSpacing:"0.12em", fontFamily:"'JetBrains Mono', monospace" }}
+              className="press-scale"
+              style={{ border:"1px solid var(--border-main)", background:"transparent", borderRadius:8, padding:"5px 10px", color:"var(--text-sec)", cursor:"pointer", fontSize:10, letterSpacing:"0.12em", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.15s, border-color 0.15s" }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-primary)"; e.currentTarget.style.borderColor = "var(--text-sec)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-sec)"; e.currentTarget.style.borderColor = "var(--border-main)"; }}
             >
@@ -1142,67 +1406,26 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
 
       <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"10px 10px 12px", display:"flex", flexDirection:"column", gap:8 }}>
         {sortedNotes.length === 0 ? (
-          <div style={{ padding:"16px 8px", border:"1px dashed var(--border-sub)", borderRadius:12, textAlign:"center", color:"var(--text-dim)", fontSize:12, lineHeight:1.7 }}>
-            Drop chapter names or reminders here as a running revision queue.
+          <div style={{ padding:"16px 8px", border:`1px dashed ${dragOverTile?"var(--accent-cyan)":"var(--border-sub)"}`, borderRadius:12, textAlign:"center", color:dragOverTile?"var(--accent-cyan)":"var(--text-dim)", fontSize:12, lineHeight:1.7, transition:"color 0.15s, border-color 0.15s" }}>
+            {dragOverTile ? "↓ drop to add as a note" : "Drag a chapter from the syllabus, or a task off the calendar, in here."}
           </div>
-        ) : sortedNotes.map((note) => {
-          const { isChapterLike, badgeColor, badgeBg, badgeBorder, badgeText } = getChapterTheme(note.text);
-          const isDragging = draggingId === note.id;
-          return (
-            <div
-              key={note.id}
-              className="note-row-in"
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "copy";
-                e.dataTransfer.setData("application/x-jee-note", JSON.stringify({ text: note.text, note: note.note }));
-                e.dataTransfer.setData("text/plain", note.note ? `${note.text} — ${note.note}` : note.text);
-                setDraggingId(note.id);
-              }}
-              onDragEnd={() => setDraggingId(null)}
-              style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 10px", borderRadius:12, border:`1px solid ${note.done ? "var(--border-sub)" : "var(--border-main)"}`, background:note.done ? "var(--bg-surface)" : "var(--bg-elevated)", opacity:isDragging ? 0.35 : (note.done ? 0.72 : 1), transition:"opacity 0.15s" }}
-            >
-              <span title="Drag onto a day to schedule" style={{ flexShrink:0, cursor:"grab", color:"var(--text-dim)", fontSize:12, lineHeight:1, userSelect:"none", padding:"0 1px" }}>⠿</span>
-              <button
-                onClick={() => onToggleNote(note.id)}
-                aria-label={note.done ? "Mark note as open" : "Mark note as done"}
-                style={{ width:18, height:18, borderRadius:5, flexShrink:0, border:`2px solid ${note.done ? "var(--accent-green)" : "var(--border-main)"}`, background:note.done ? "rgba(61, 252, 154, 0.18)" : "transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}
-              >
-                {note.done && <span style={{ color:"var(--accent-green)", fontSize:10, lineHeight:1 }}>✓</span>}
-              </button>
-
-              <div style={{ minWidth:0, flex:1, display:"flex", flexDirection:"column", gap:4 }}>
-                <div style={{ display:"flex", gap:6, alignItems:"center", minWidth:0 }}>
-                  <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:badgeColor, background:badgeBg, border:`1px solid ${badgeBorder}`, borderRadius:5, padding:"2px 6px", flexShrink:0 }}>
-                    {badgeText}
-                  </span>
-                  <span style={{ fontSize:12, lineHeight:1.45, color:note.done ? "var(--text-muted)" : "var(--text-primary)", textDecoration:note.done ? "line-through" : "none", fontFamily:"'JetBrains Mono', monospace", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {note.text}
-                  </span>
-                </div>
-                {note.note && (
-                  <span style={{ fontSize:11, lineHeight:1.45, color:note.done ? "var(--text-muted)" : "var(--text-sec)", textDecoration:note.done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    {note.note}
-                  </span>
-                )}
-                {!isChapterLike && (
-                  <span style={{ fontSize:10, color:"var(--text-dim)" }}>
-                    Free-form reminder
-                  </span>
-                )}
-              </div>
-
-              <button
-                onClick={() => onDeleteNote(note.id)}
-                style={{ flexShrink:0, border:"1px solid #3A2230", background:"#1E0E18", padding:"2px 7px", borderRadius:6, color:"#FF8FA3", fontSize:10, letterSpacing:"0.12em", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "#2E1020"; e.currentTarget.style.color = "#FFD5DD"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "#1E0E18"; e.currentTarget.style.color = "#FF8FA3"; }}
-              >
-                DEL
-              </button>
-            </div>
-          );
-        })}
+        ) : sortedNotes.map((note) => (
+          <NoteRow
+            key={note.id}
+            note={note}
+            dragging={draggingId === note.id}
+            onToggle={() => onToggleNote(note.id)}
+            onDelete={() => onDeleteNote(note.id)}
+            onEditNote={(newNote) => onEditNote(note.id, newNote)}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "copy";
+              e.dataTransfer.setData("application/x-jee-tile", JSON.stringify({ text: note.text, note: note.note }));
+              e.dataTransfer.setData("text/plain", note.note ? `${note.text} — ${note.note}` : note.text);
+              setDraggingId(note.id);
+            }}
+            onDragEnd={() => setDraggingId(null)}
+          />
+        ))}
       </div>
     </section>
   );
@@ -1226,8 +1449,10 @@ function MasteryLedger({ ledger, search = "" }) {
   const [open, setOpen] = useState({});
   const q = search.trim().toLowerCase();
   const subjects = Object.keys(ledger);
-  if (!subjects.length) return <p style={{ fontSize:12, color:"var(--text-muted)", textAlign:"center", marginTop:60, lineHeight:1.8, padding:"0 16px" }}>Complete tasks to build<br />your mastery log.</p>;
 
+  // NOTE: this useMemo must run on every render, even when `subjects` is
+  // empty — hooks can never sit behind a conditional early return, or the
+  // hook count changes between renders and React crashes the whole tree.
   const filtered = useMemo(() => {
     if (!q) return ledger;
     const out = {};
@@ -1243,6 +1468,8 @@ function MasteryLedger({ ledger, search = "" }) {
     }
     return out;
   }, [ledger, q]);
+
+  if (!subjects.length) return <p style={{ fontSize:12, color:"var(--text-muted)", textAlign:"center", marginTop:60, lineHeight:1.8, padding:"0 16px" }}>Complete tasks to build<br />your mastery log.</p>;
 
   const filteredSubjects = Object.keys(filtered);
 
@@ -1338,7 +1565,22 @@ function HelpPanel({ open: isOpen, onClose }) {
         ["T",                 "Jump to today."],
         ["C",                 "Open full calendar view."],
         ["[ ]",              "Jump ±7 days (week skip)."],
+        ["Ctrl+\\",           "Collapse / expand the syllabus sidebar."],
         ["Click side column", "Jump active day to that column."],
+      ],
+    },
+    {
+      title: "DRAG & DROP",
+      color: "var(--accent-cyan)",
+      items: [
+        ["Drag ⠿ chapter/note",  "From syllabus or notepad → drop on a day to schedule."],
+        ["Drag onto notepad",    "Drop a chapter tile there to queue it as a note."],
+        ["Drag a task off a day","Drop it back on the notepad to un-schedule it."],
+        ["Drag a task card",     "Reorder within a day, or drop on another day to move it."],
+        ["Click a note's detail","Edit the optional note inline, in notepad or on a task."],
+        ["Enter in syllabus bar","Queues the chapter into the notepad (doesn't schedule it)."],
+        ["Drag notepad/ledger",  "handle · resizes both panels; double-click resets."],
+        ["Drag sidebar edge",    "Resizes the syllabus panel; double-click resets."],
       ],
     },
     {
@@ -1592,6 +1834,10 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate }) {
 const NOTEPAD_DEFAULT_HEIGHT = 320;
 const NOTEPAD_MIN_HEIGHT     = 160;
 const LEDGER_MIN_HEIGHT      = 150;
+const SIDEBAR_DEFAULT_WIDTH  = 280;
+const SIDEBAR_MIN_WIDTH      = 200;
+const SIDEBAR_MAX_WIDTH      = 480;
+const SIDEBAR_COLLAPSED_WIDTH = 44;
 
 export default function App() {
   const [fileHandle,   setFileHandle]   = useState(null);
@@ -1599,7 +1845,7 @@ export default function App() {
   const [activeDate,   setActiveDate]   = useState(todayStr());
   const [showHelp,     setShowHelp]     = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [searchQ,      setSearchQ]      = useState("");
+  const [syllabusQuery, setSyllabusQuery] = useState("");
   const [ledgerSearch, setLedgerSearch] = useState("");
   const [saveStatus,   setSaveStatus]   = useState("idle"); // idle | saving | saved
 
@@ -1612,6 +1858,18 @@ export default function App() {
   const [resizingNotepad, setResizingNotepad] = useState(false);
   const asideRef = useRef(null);
 
+  // Syllabus sidebar: resizable width + collapse
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
+    const saved = Number(window.localStorage.getItem("jee-os-sidebar-width"));
+    return Number.isFinite(saved) && saved > 0 ? saved : SIDEBAR_DEFAULT_WIDTH;
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("jee-os-sidebar-collapsed") === "1";
+  });
+  const [resizingSidebar, setResizingSidebar] = useState(false);
+
   const { toasts, push: pushToast } = useToast();
 
   const cmdRef    = useRef(null);
@@ -1623,6 +1881,14 @@ export default function App() {
     window.localStorage.setItem("jee-os-notepad-height", String(notepadHeight));
   }, [notepadHeight]);
 
+  useEffect(() => {
+    window.localStorage.setItem("jee-os-sidebar-width", String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    window.localStorage.setItem("jee-os-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
+  }, [sidebarCollapsed]);
+
   const handleNotepadResizeDelta = useCallback((dy) => {
     setNotepadHeight((h) => {
       const asideH = asideRef.current?.clientHeight ?? 800;
@@ -1631,6 +1897,11 @@ export default function App() {
     });
   }, []);
   const resetNotepadHeight = useCallback(() => setNotepadHeight(NOTEPAD_DEFAULT_HEIGHT), []);
+
+  const handleSidebarResizeDelta = useCallback((dx) => {
+    setSidebarWidth((w) => Math.min(Math.max(w + dx, SIDEBAR_MIN_WIDTH), SIDEBAR_MAX_WIDTH));
+  }, []);
+  const resetSidebarWidth = useCallback(() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH), []);
 
   const schedSave = useCallback((nextData) => {
     if (!fileHandle) return;
@@ -1673,6 +1944,8 @@ export default function App() {
       const inInput = tag==="INPUT"||tag==="TEXTAREA";
 
       if ((e.ctrlKey||e.metaKey) && e.key==="k") { e.preventDefault(); cmdRef.current?.focus(); cmdRef.current?.select(); return; }
+
+      if ((e.ctrlKey||e.metaKey) && e.key==="\\") { e.preventDefault(); setSidebarCollapsed(c => !c); return; }
 
       if ((e.ctrlKey||e.metaKey) && !e.shiftKey && e.key==="d") {
         e.preventDefault();
@@ -1743,6 +2016,27 @@ export default function App() {
     patch(prev => ({ ...prev, notes:(prev.notes??[]).filter(note => note.id!==noteId) }));
   }, [patch]);
 
+  const editNoteText = useCallback((noteId, note) => {
+    patch(prev => ({ ...prev, notes:(prev.notes??[]).map(n=>n.id===noteId?{ ...n, note }:n) }));
+  }, [patch]);
+
+  // Drag a scheduled task off a day and drop it back onto the Notepad —
+  // it becomes a note again and is removed from that day's calendar.
+  const moveTaskToNotepad = useCallback((taskId, fromDate) => {
+    patch(prev => {
+      const fromTasks = prev.days[fromDate]?.tasks ?? [];
+      const task = fromTasks.find(t => t.id === taskId);
+      if (!task) return prev;
+      const newNote = { id:noteUid(), text:task.chapter, note:task.customNote ?? "", done:false, createdAt:new Date().toISOString() };
+      return {
+        ...prev,
+        notes: [newNote, ...(prev.notes ?? [])],
+        days: { ...prev.days, [fromDate]:{ tasks:fromTasks.filter(t => t.id !== taskId) } },
+      };
+    });
+    pushToast("Moved back to notepad", { icon:"📝" });
+  }, [patch, pushToast]);
+
   const clearDoneNotes = useCallback(() => {
     const count = (data?.notes ?? []).filter(n => n.done).length;
     patch(prev => ({ ...prev, notes:(prev.notes??[]).filter(note => !note.done) }));
@@ -1761,15 +2055,43 @@ export default function App() {
     });
   }, [patch]);
 
-  // Dropping a notepad tile onto a day column: reuse the same fuzzy chapter
-  // matcher the notepad itself uses, so a chapter-like note lands as a proper
-  // themed task, and a free-form note lands as a plain task with that text.
-  const handleNoteDrop = useCallback((date, payload) => {
+  const editTaskNote = useCallback((date, taskId, note) => {
+    patch(prev => ({ ...prev, days:{ ...prev.days, [date]:{ tasks:(prev.days[date]?.tasks??[]).map(t=>t.id===taskId?{ ...t, customNote:note }:t) } } }));
+  }, [patch]);
+
+  // Drag-reorder within a day, or drag a task card across days entirely.
+  const moveTask = useCallback((taskId, fromDate, toDate, toIndex) => {
+    patch(prev => {
+      const fromTasks = prev.days[fromDate]?.tasks ?? [];
+      const task = fromTasks.find(t => t.id === taskId);
+      if (!task) return prev;
+      const fromRemoved = fromTasks.filter(t => t.id !== taskId);
+      const toBase = fromDate === toDate ? fromRemoved : (prev.days[toDate]?.tasks ?? []);
+      const clamped = Math.max(0, Math.min(toIndex, toBase.length));
+      const toTasks = [...toBase.slice(0, clamped), task, ...toBase.slice(clamped)];
+      const nextDays = { ...prev.days, [toDate]:{ tasks:toTasks } };
+      if (fromDate !== toDate) {
+        nextDays[fromDate] = { tasks:fromRemoved };
+        pushToast(`Moved "${task.chapter}" → ${fmtDateBig(toDate)}`, { icon:"↪" });
+      }
+      return { ...prev, days:nextDays };
+    });
+  }, [patch, pushToast]);
+
+  // Dropping a tile (from the notepad or the syllabus sidebar) onto a day
+  // column: syllabus tiles already know their subject; free-form notepad
+  // text gets re-matched through the same fuzzy chapter detector so it still
+  // lands as a properly themed task.
+  const handleTileDrop = useCallback((date, payload) => {
     const text = String(payload?.text ?? "").trim();
     if (!text) return;
-    const theme   = getChapterTheme(text);
-    const subject = theme.isChapterLike ? theme.match.subject : "Physics";
-    const chapter = theme.isChapterLike ? theme.match.chapter : text;
+    let subject = payload?.subject;
+    let chapter = text;
+    if (!subject) {
+      const theme = getChapterTheme(text);
+      subject = theme.isChapterLike ? theme.match.subject : "Physics";
+      chapter = theme.isChapterLike ? theme.match.chapter : text;
+    }
     addTask(date, subject, chapter, payload?.note ?? "");
     pushToast(`Scheduled "${chapter}" → ${fmtDateBig(date)}`, { icon:"📌" });
   }, [addTask, pushToast]);
@@ -1799,6 +2121,7 @@ export default function App() {
   }, [data]);
 
   const totalDone  = useMemo(() => !data?0:Object.values(data.days??{}).reduce((s,d)=>s+(d.tasks??[]).filter(t=>t.completed).length,0), [data]);
+  const totalDoneBump = useBump(totalDone);
   const visibleDays = useMemo(() => [-1,0,1].map(i=>shiftDateStr(activeDate,i)), [activeDate]);
 
   if (!data) return (<><InjectStyles /><SetupScreen onReady={(fh,d)=>{ setFileHandle(fh); setData(normalizeData(d)); }} /></>);
@@ -1813,7 +2136,7 @@ export default function App() {
         {/* ── HEADER ── */}
         <header style={{ flexShrink:0, display:"flex", alignItems:"center", gap:12, padding:"10px 16px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
           <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
-          <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.0</span>
+          <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.2</span>
 
           <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />
 
@@ -1824,13 +2147,12 @@ export default function App() {
                 {saveStatus==="saving" ? "SAVING…" : "SAVED"}
               </span>
             )}
-            {[{ label:`🔥 ${data.meta?.streakCount??0}d` },{ label:`✓ ${totalDone}` }].map((b,i) => (
-              <span key={i} style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>{b.label}</span>
-            ))}
-            <button onClick={() => setShowCalendar(true)} title="Full calendar (C)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+            <span style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>🔥 {data.meta?.streakCount??0}d</span>
+            <span className={totalDoneBump ? "count-bump" : undefined} style={{ display:"inline-block", fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>✓ {totalDone}</span>
+            <button className="press-scale" onClick={() => setShowCalendar(true)} title="Full calendar (C)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
               onMouseEnter={e=>e.currentTarget.style.color="var(--accent-purple)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
             >▦ CAL</button>
-            <button onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+            <button className="press-scale" onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
               onMouseEnter={e=>e.currentTarget.style.color="var(--accent-cyan)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
             >? HELP</button>
             <button onClick={handleSwapFile} title="Switch data file" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
@@ -1847,27 +2169,45 @@ export default function App() {
 
           <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
 
-            {/* Syllabus tree */}
-            <aside style={{ width:"22%", flexShrink:0, background:"var(--bg-base)", borderRight:"1px solid var(--border-main)", overflowY:"auto", display:"flex", flexDirection:"column" }}>
-              <div style={{ flexShrink:0, borderBottom:"1px solid var(--border-sub)" }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px 6px" }}>
-                  <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>SYLLABUS</span>
-                  <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:5, padding:"1px 7px" }}>→ {fmtDateBig(activeDate)}</span>
+            {/* Syllabus tree — collapsible + resizable, unified smart search */}
+            {sidebarCollapsed ? (
+              <aside style={{ width:SIDEBAR_COLLAPSED_WIDTH, flexShrink:0, background:"var(--bg-base)", borderRight:"1px solid var(--border-main)", display:"flex", flexDirection:"column", alignItems:"center", paddingTop:10, gap:10 }}>
+                <button className="sidebar-rail-btn" onClick={() => setSidebarCollapsed(false)} title="Expand syllabus (Ctrl+\)" style={{ width:28, height:28, borderRadius:7, border:"1px solid var(--border-main)", background:"var(--bg-elevated)", color:"var(--text-sec)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12 }}>»</button>
+                <span style={{ writingMode:"vertical-rl", fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none", marginTop:6 }}>SYLLABUS</span>
+                <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:8 }}>
+                  {Object.keys(JEE_SYLLABUS).map(subject => (
+                    <span key={subject} title={subject} style={{ width:8, height:8, borderRadius:"50%", background:S[subject]?.accent ?? "var(--text-muted)" }} />
+                  ))}
                 </div>
-                <div style={{ padding:"0 10px 10px", position:"relative" }}>
-                  <span style={{ position:"absolute", left:18, top:"50%", transform:"translateY(-60%)", fontSize:12, color:"var(--text-muted)", pointerEvents:"none" }}>🔍</span>
-                  <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search chapters..."
-                    style={{ width:"100%", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, padding:"7px 10px 7px 28px", fontSize:12, color:"var(--text-primary)", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:"var(--accent-cyan)" }}
-                    onFocus={e=>e.currentTarget.style.borderColor="var(--accent-cyan)"}
-                    onBlur={e=>e.currentTarget.style.borderColor="var(--border-main)"}
-                  />
-                  {searchQ && <button onClick={()=>setSearchQ("")} style={{ position:"absolute", right:16, top:"50%", transform:"translateY(-60%)", background:"none", border:"none", cursor:"pointer", fontSize:12, color:"var(--text-muted)", padding:0 }}>✕</button>}
+              </aside>
+            ) : (
+              <aside style={{ width:sidebarWidth, flexShrink:0, background:"var(--bg-base)", borderRight:"1px solid var(--border-main)", display:"flex", overflow:"hidden" }}>
+                <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", minWidth:0 }}>
+                  <div style={{ flexShrink:0, borderBottom:"1px solid var(--border-sub)" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px 6px", gap:8 }}>
+                      <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>SYLLABUS</span>
+                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:5, padding:"1px 7px", whiteSpace:"nowrap" }}>→ {fmtDateBig(activeDate)}</span>
+                        <button className="sidebar-rail-btn" onClick={() => setSidebarCollapsed(true)} title="Collapse syllabus (Ctrl+\)" style={{ width:22, height:22, borderRadius:6, border:"1px solid var(--border-main)", background:"var(--bg-elevated)", color:"var(--text-sec)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, flexShrink:0 }}>«</button>
+                      </div>
+                    </div>
+                    <div style={{ padding:"0 10px 10px" }}>
+                      <SyllabusSearchBar onAddNote={addNote} onQueryChange={setSyllabusQuery} />
+                    </div>
+                  </div>
+                  {Object.entries(JEE_SYLLABUS).map(([subject, classes]) => (
+                    <SubjectTree key={subject} subject={subject} classes={classes} activeDate={activeDate} onAddTask={addTask} searchQ={syllabusQuery} />
+                  ))}
                 </div>
-              </div>
-              {Object.entries(JEE_SYLLABUS).map(([subject, classes]) => (
-                <SubjectTree key={subject} subject={subject} classes={classes} activeDate={activeDate} onAddTask={addTask} searchQ={searchQ} />
-              ))}
-            </aside>
+                <ResizeHandle
+                  axis="x"
+                  onResizeDelta={handleSidebarResizeDelta}
+                  onReset={resetSidebarWidth}
+                  onResizeStart={() => setResizingSidebar(true)}
+                  onResizeEnd={() => setResizingSidebar(false)}
+                />
+              </aside>
+            )}
 
             {/* Timeline */}
             <main style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
@@ -1880,7 +2220,9 @@ export default function App() {
                     onClick={() => { const d=idx-1; if (d!==0) moveActive(d); }}
                     onToggle={tid => toggleTask(date,tid)}
                     onRemove={tid => removeTask(date,tid)}
-                    onDropNote={payload => handleNoteDrop(date, payload)}
+                    onEditNote={(tid, note) => editTaskNote(date, tid, note)}
+                    onDropTile={payload => handleTileDrop(date, payload)}
+                    onMoveTask={(taskId, fromDate, toDate, toIndex) => moveTask(taskId, fromDate, toDate, toIndex)}
                   />
                 ))}
               </div>
@@ -1912,7 +2254,9 @@ export default function App() {
                 onAddNote={addNote}
                 onToggleNote={toggleNote}
                 onDeleteNote={deleteNote}
+                onEditNote={editNoteText}
                 onClearDone={clearDoneNotes}
+                onTaskDrop={moveTaskToNotepad}
               />
 
               <ResizeHandle
