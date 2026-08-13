@@ -113,6 +113,26 @@ const GLOBAL_CSS = `
   ::-webkit-scrollbar-track { background:transparent; }
   ::-webkit-scrollbar-thumb { background:var(--border-main); border-radius:99px; border:2px solid var(--bg-base); }
   ::-webkit-scrollbar-thumb:hover { background:var(--text-dim); }
+
+  /* ── Mobile / touch safety ── */
+  html { -webkit-text-size-adjust: 100%; }
+  body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+  input, textarea, select { font-size: 16px; } /* prevents iOS Safari auto-zoom on focus */
+  @media (min-width: 861px) { input, textarea, select { font-size: inherit; } }
+  a, button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .safe-top    { padding-top: env(safe-area-inset-top, 0px); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+  @keyframes sheetIn  { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  @keyframes sheetBackdropIn { from { opacity:0; } to { opacity:1; } }
+  .action-sheet-backdrop { animation: sheetBackdropIn 0.15s ease forwards; }
+  .action-sheet { animation: sheetIn 0.22s cubic-bezier(0.32,0.72,0,1) forwards; }
+
+  .tab-bar-btn { transition: color 0.15s, transform 0.12s; }
+  .tab-bar-btn:active { transform: scale(0.92); }
+
+  .app-shell { height: 100vh; }
+  @supports (height: 100dvh) { .app-shell { height: 100dvh; } }
 `;
 
 function InjectStyles() {
@@ -120,7 +140,20 @@ function InjectStyles() {
     const el = document.createElement("style");
     el.textContent = GLOBAL_CSS;
     document.head.appendChild(el);
-    return () => document.head.removeChild(el);
+
+    // Ensure a correct mobile viewport (no accidental pinch-zoom traps, and
+    // safe-area awareness for notched phones) regardless of the host page.
+    let meta = document.querySelector('meta[name="viewport"]');
+    let createdMeta = false;
+    if (!meta) { meta = document.createElement("meta"); meta.name = "viewport"; document.head.appendChild(meta); createdMeta = true; }
+    const prevContent = meta.getAttribute("content");
+    meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
+
+    return () => {
+      document.head.removeChild(el);
+      if (createdMeta) meta.remove();
+      else if (prevContent !== null) meta.setAttribute("content", prevContent);
+    };
   }, []);
   return null;
 }
@@ -144,6 +177,27 @@ function useBump(value) {
     }
   }, [value]);
   return bump;
+}
+
+// Tracks whether we're on a small / touch-primary viewport, so the layout can
+// switch from the 3-pane desktop workspace to a single-pane tabbed app.
+// Re-evaluated live on resize/orientation change (not just at mount).
+function useIsMobile(breakpoint = 860) {
+  const getMatch = () => typeof window !== "undefined" && window.matchMedia(`(max-width: ${breakpoint}px)`).matches;
+  const [isMobile, setIsMobile] = useState(getMatch);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handler = () => setIsMobile(mq.matches);
+    handler();
+    mq.addEventListener ? mq.addEventListener("change", handler) : mq.addListener(handler);
+    window.addEventListener("orientationchange", handler);
+    return () => {
+      mq.removeEventListener ? mq.removeEventListener("change", handler) : mq.removeListener(handler);
+      window.removeEventListener("orientationchange", handler);
+    };
+  }, [breakpoint]);
+  return isMobile;
 }
 
 function useToast() {
@@ -925,7 +979,7 @@ function SyllabusSearchBar({ onAddNote, onQueryChange }) {
 
 // ─── CHAPTER ROW ───────────────────────────────────────────────────────────────
 
-function ChapterRow({ subject, chapter, activeDate, onAddTask }) {
+function ChapterRow({ subject, chapter, activeDate, onAddTask, isMobile = false }) {
   const [hovered, setHovered] = useState(false);
   const [showInput, setShow]  = useState(false);
   const [note, setNote]       = useState("");
@@ -934,25 +988,26 @@ function ChapterRow({ subject, chapter, activeDate, onAddTask }) {
   const { accent, accentBg, accentBorder } = S[subject];
   useEffect(() => { if (showInput) inputRef.current?.focus(); }, [showInput]);
   const commit = () => { onAddTask(activeDate, subject, chapter, note.trim()); setNote(""); setShow(false); };
+  const showAdd = isMobile || hovered;
 
   return (
     <div className="chapter-row-in">
       <div
-        draggable
-        onDragStart={(e) => {
+        draggable={!isMobile}
+        onDragStart={isMobile ? undefined : (e) => {
           e.dataTransfer.effectAllowed = "copy";
           e.dataTransfer.setData("application/x-jee-tile", JSON.stringify({ text:chapter, note:"", subject }));
           e.dataTransfer.setData("text/plain", chapter);
           setDragging(true);
         }}
-        onDragEnd={() => setDragging(false)}
+        onDragEnd={isMobile ? undefined : () => setDragging(false)}
         onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
-        style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 10px 5px 28px", background:hovered?"var(--bg-hover)":"transparent", opacity:dragging?0.4:1, transition:"background 0.12s, opacity 0.15s", cursor:"grab", position:"relative" }}>
+        style={{ display:"flex", alignItems:"center", gap:6, padding:isMobile?"9px 10px 9px 28px":"5px 10px 5px 28px", background:hovered?"var(--bg-hover)":"transparent", opacity:dragging?0.4:1, transition:"background 0.12s, opacity 0.15s", cursor:isMobile?"default":"grab", position:"relative" }}>
         <div style={{ position:"absolute", left:16, top:"50%", width:8, height:1, background:"var(--border-sub)", transform:"translateY(-50%)" }} />
-        <span title="Drag onto a day to schedule" style={{ flexShrink:0, fontSize:11, color:"var(--text-dim)", userSelect:"none" }}>⠿</span>
+        {!isMobile && <span title="Drag onto a day to schedule" style={{ flexShrink:0, fontSize:11, color:"var(--text-dim)", userSelect:"none" }}>⠿</span>}
         <span style={{ flex:1, fontSize:12, lineHeight:1.5, color:hovered?"var(--text-primary)":"var(--text-sec)", transition:"color 0.12s" }}>{chapter}</span>
-        {hovered && (
-          <button onClick={() => setShow(true)} style={{ color:accent, background:accentBg, border:`1px solid ${accentBorder}`, fontSize:12, padding:"1px 8px", borderRadius:6, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>+</button>
+        {showAdd && (
+          <button onClick={() => setShow(true)} className="press-scale" style={{ color:accent, background:accentBg, border:`1px solid ${accentBorder}`, fontSize:12, padding:isMobile?"3px 10px":"1px 8px", borderRadius:6, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>+</button>
         )}
       </div>
       {showInput && (
@@ -962,6 +1017,10 @@ function ChapterRow({ subject, chapter, activeDate, onAddTask }) {
             placeholder="Optional topic/details"
             style={{ width:"100%", background:"var(--bg-surface)", border:`1px solid ${accentBorder}`, borderRadius:6, fontSize:12, color:"var(--text-primary)", padding:"5px 8px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:accent }}
           />
+          <div style={{ display:"flex", gap:6, marginTop:6 }}>
+            <button onClick={commit} className="press-scale" style={{ color:accent, background:accentBg, border:`1px solid ${accentBorder}`, borderRadius:6, padding:"4px 10px", fontSize:11, letterSpacing:"0.12em", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>ADD</button>
+            <button onClick={() => { setNote(""); setShow(false); }} className="press-scale" style={{ color:"var(--text-sec)", background:"transparent", border:"1px solid var(--border-sub)", borderRadius:6, padding:"4px 10px", fontSize:11, letterSpacing:"0.12em", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>CANCEL</button>
+          </div>
         </div>
       )}
     </div>
@@ -1008,7 +1067,7 @@ function CustomChapterRow({ subject, activeDate, onAddTask }) {
 
 // ─── SUBJECT TREE ──────────────────────────────────────────────────────────────
 
-function SubjectTree({ subject, classes, activeDate, onAddTask, searchQ }) {
+function SubjectTree({ subject, classes, activeDate, onAddTask, searchQ, isMobile = false }) {
   const [open, setOpen]           = useState(true);
   const [classOpen, setClassOpen] = useState({ "Class 11":true, "Class 12":true });
   const { accent, accentBg, accentBorder, label } = S[subject];
@@ -1047,7 +1106,7 @@ function SubjectTree({ subject, classes, activeDate, onAddTask, searchQ }) {
               </span>
               <span style={{ fontSize:9, color:"var(--text-muted)" }}>{clsOpen?"▾":"▸"}</span>
             </button>
-            {clsOpen && chapters.map(ch => <ChapterRow key={ch} subject={subject} chapter={ch} activeDate={activeDate} onAddTask={onAddTask} />)}
+            {clsOpen && chapters.map(ch => <ChapterRow key={ch} subject={subject} chapter={ch} activeDate={activeDate} onAddTask={onAddTask} isMobile={isMobile} />)}
           </div>
         );
       })}
@@ -1058,22 +1117,68 @@ function SubjectTree({ subject, classes, activeDate, onAddTask, searchQ }) {
 
 // ─── TASK CARD ─────────────────────────────────────────────────────────────────
 
-function TaskCard({ task, onToggle, onRemove, onEditNote, draggable = true, dimmed = false, onDragStart, onDragEnd, onDragOver }) {
+// ─── MOBILE ACTION SHEET ────────────────────────────────────────────────────────
+// Native HTML5 drag-and-drop doesn't fire from touch on phones, so this is the
+// touch-equivalent for "move/schedule" actions: tap the ⋮ handle instead of
+// dragging, pick an action from a bottom sheet.
+
+function MobileActionSheet({ open, onClose, title, subtitle, actions }) {
+  if (!open) return null;
+  return (
+    <div className="action-sheet-backdrop" onClick={onClose} style={{ position:"fixed", inset:0, zIndex:500, background:"rgba(2,6,12,0.6)" }}>
+      <div className="action-sheet safe-bottom" onClick={e => e.stopPropagation()} style={{ position:"absolute", left:0, right:0, bottom:0, background:"var(--bg-surface)", borderTop:"1px solid var(--border-main)", borderRadius:"18px 18px 0 0", boxShadow:"0 -20px 60px rgba(0,0,0,0.6)", padding:"10px 14px 14px", fontFamily:"'JetBrains Mono', monospace" }}>
+        <div style={{ width:36, height:4, borderRadius:99, background:"var(--border-main)", margin:"0 auto 12px" }} />
+        {title && (
+          <div style={{ padding:"0 4px 10px" }}>
+            <div style={{ fontSize:14, color:"var(--text-primary)", fontWeight:600 }}>{title}</div>
+            {subtitle && <div style={{ fontSize:12, color:"var(--text-muted)", marginTop:2 }}>{subtitle}</div>}
+          </div>
+        )}
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {actions.filter(Boolean).map((a, i) => (
+            <button key={i} onClick={() => { if (a.disabled) return; a.onSelect(); onClose(); }}
+              style={{ display:"flex", alignItems:"center", gap:10, width:"100%", textAlign:"left", padding:"13px 14px", borderRadius:12, border:`1px solid ${a.danger?"#3A2230":"var(--border-sub)"}`, background:a.danger?"#1E0E18":"var(--bg-elevated)", color:a.danger?"#FF8FA3":"var(--text-primary)", fontSize:13, cursor:a.disabled?"default":"pointer", opacity:a.disabled?0.4:1, fontFamily:"'JetBrains Mono', monospace" }}
+            >
+              {a.icon && <span style={{ fontSize:15, flexShrink:0, width:18, textAlign:"center" }}>{a.icon}</span>}
+              <span style={{ flex:1 }}>{a.label}</span>
+            </button>
+          ))}
+        </div>
+        <button onClick={onClose} style={{ width:"100%", marginTop:10, padding:"12px", borderRadius:12, border:"1px solid var(--border-main)", background:"transparent", color:"var(--text-sec)", fontSize:12, letterSpacing:"0.1em", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>CANCEL</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── TASK CARD ─────────────────────────────────────────────────────────────────
+
+function TaskCard({ task, onToggle, onRemove, onEditNote, draggable = true, dimmed = false, onDragStart, onDragEnd, onDragOver, isMobile = false, onMoveToNotepad, onMoveRelative }) {
   const cfg = S[task.subject] ?? S.Physics;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(task.customNote ?? "");
   const [hovered, setHovered] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => { if (editing) { setDraft(task.customNote ?? ""); requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.select(); }); } }, [editing]);
 
   const commitNote = () => { onEditNote?.(draft.trim()); setEditing(false); };
   const cancelNote = () => setEditing(false);
+  const showNoteAffordance = isMobile || hovered;
+
+  const sheetActions = [
+    { icon:"✓", label:task.completed ? "Mark as not done" : "Mark as done", onSelect:onToggle },
+    { icon:"✎", label:"Edit note", onSelect:() => setEditing(true) },
+    { icon:"◀", label:"Move to yesterday", onSelect:() => onMoveRelative?.(-1) },
+    { icon:"▶", label:"Move to tomorrow", onSelect:() => onMoveRelative?.(1) },
+    { icon:"📝", label:"Move back to notepad", onSelect:onMoveToNotepad },
+    { icon:"✕", label:"Delete task", danger:true, onSelect:onRemove },
+  ];
 
   return (
     <div
       className="task-card-in"
-      draggable={draggable && !editing}
+      draggable={!isMobile && draggable && !editing}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
@@ -1084,13 +1189,13 @@ function TaskCard({ task, onToggle, onRemove, onEditNote, draggable = true, dimm
         border:`1px solid ${task.completed?"var(--border-sub)":cfg.accentBorder}`,
         opacity:dimmed?0.35:task.completed?0.55:1, borderRadius:10, padding:"10px 12px", marginBottom:8,
         transition:"transform 0.15s, box-shadow 0.15s, opacity 0.15s, background 0.2s",
-        transform: hovered && !task.completed && !editing ? "translateY(-2px)" : "translateY(0)",
-        boxShadow: hovered && !task.completed && !editing ? "0 10px 22px -8px rgba(0,0,0,0.5)" : "none",
-        cursor: draggable && !editing ? "grab" : "default",
+        transform: !isMobile && hovered && !task.completed && !editing ? "translateY(-2px)" : "translateY(0)",
+        boxShadow: !isMobile && hovered && !task.completed && !editing ? "0 10px 22px -8px rgba(0,0,0,0.5)" : "none",
+        cursor: !isMobile && draggable && !editing ? "grab" : "default",
       }}>
       <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
-        <button onClick={onToggle} className="press-scale" style={{ marginTop:2, width:18, height:18, borderRadius:5, flexShrink:0, border:`2px solid ${task.completed?cfg.accent:cfg.accentBorder}`, background:task.completed?cfg.accent+"30":"transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s" }}>
-          {task.completed && <span style={{ color:cfg.accent, fontSize:10, lineHeight:1 }}>✓</span>}
+        <button onClick={onToggle} className="press-scale" style={{ marginTop:2, width:isMobile?22:18, height:isMobile?22:18, borderRadius:6, flexShrink:0, border:`2px solid ${task.completed?cfg.accent:cfg.accentBorder}`, background:task.completed?cfg.accent+"30":"transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", transition:"all 0.15s" }}>
+          {task.completed && <span style={{ color:cfg.accent, fontSize:isMobile?12:10, lineHeight:1 }}>✓</span>}
         </button>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginBottom:5 }}>
@@ -1108,29 +1213,36 @@ function TaskCard({ task, onToggle, onRemove, onEditNote, draggable = true, dimm
               onKeyDown={e => { if (e.key==="Enter") commitNote(); if (e.key==="Escape") cancelNote(); }}
               onBlur={commitNote}
               placeholder="Optional note"
-              style={{ width:"100%", marginTop:4, background:"var(--bg-surface)", border:`1px solid ${cfg.accentBorder}`, borderRadius:6, fontSize:12, color:"var(--text-primary)", padding:"4px 7px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:cfg.accent }}
+              style={{ width:"100%", marginTop:4, background:"var(--bg-surface)", border:`1px solid ${cfg.accentBorder}`, borderRadius:6, fontSize:12, color:"var(--text-primary)", padding:"5px 7px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:cfg.accent }}
             />
           ) : task.customNote ? (
-            <p onClick={() => !task.completed && setEditing(true)} title={task.completed?undefined:"Click to edit note"}
-              style={{ fontSize:12, marginTop:3, lineHeight:1.4, color:task.completed?"var(--text-muted)":"var(--text-sec)", textDecoration:task.completed?"line-through":"none", margin:"3px 0 0", cursor:task.completed?"default":"text" }}>
+            <p onClick={() => !isMobile && !task.completed && setEditing(true)} title={!isMobile && !task.completed ? "Click to edit note" : undefined}
+              style={{ fontSize:12, marginTop:3, lineHeight:1.4, color:task.completed?"var(--text-muted)":"var(--text-sec)", textDecoration:task.completed?"line-through":"none", margin:"3px 0 0", cursor:!isMobile && !task.completed ? "text" : "default" }}>
               {task.customNote}
             </p>
-          ) : (!task.completed && hovered) ? (
-            <p onClick={() => setEditing(true)} style={{ fontSize:11, marginTop:3, lineHeight:1.4, color:"var(--text-dim)", fontStyle:"italic", margin:"3px 0 0", cursor:"text" }}>+ add note</p>
+          ) : (!task.completed && showNoteAffordance) ? (
+            <p onClick={() => !isMobile && setEditing(true)} style={{ fontSize:11, marginTop:3, lineHeight:1.4, color:"var(--text-dim)", fontStyle:"italic", margin:"3px 0 0", cursor:!isMobile ? "text" : "default" }}>+ add note</p>
           ) : null}
         </div>
-        <button onClick={onRemove} style={{ marginTop:1, borderRadius:6, border:"1px solid #3A2230", background:"#1E0E18", padding:"2px 7px", fontSize:10, letterSpacing:"0.12em", color:"#FF8FA3", cursor:"pointer", transition:"all 0.12s", fontFamily:"'JetBrains Mono', monospace" }}
-          onMouseEnter={e => { e.currentTarget.style.background="#2E1020"; e.currentTarget.style.color="#FFD5DD"; }}
-          onMouseLeave={e => { e.currentTarget.style.background="#1E0E18"; e.currentTarget.style.color="#FF8FA3"; }}
-        >DEL</button>
+        {isMobile ? (
+          <button onClick={() => setSheetOpen(true)} className="press-scale" aria-label="Task actions" style={{ marginTop:1, flexShrink:0, width:30, height:26, borderRadius:6, border:"1px solid var(--border-main)", background:"var(--bg-surface)", color:"var(--text-sec)", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>⋮</button>
+        ) : (
+          <button onClick={onRemove} style={{ marginTop:1, borderRadius:6, border:"1px solid #3A2230", background:"#1E0E18", padding:"2px 7px", fontSize:10, letterSpacing:"0.12em", color:"#FF8FA3", cursor:"pointer", transition:"all 0.12s", fontFamily:"'JetBrains Mono', monospace" }}
+            onMouseEnter={e => { e.currentTarget.style.background="#2E1020"; e.currentTarget.style.color="#FFD5DD"; }}
+            onMouseLeave={e => { e.currentTarget.style.background="#1E0E18"; e.currentTarget.style.color="#FF8FA3"; }}
+          >DEL</button>
+        )}
       </div>
+      {isMobile && (
+        <MobileActionSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={task.chapter} subtitle="Task actions" actions={sheetActions} />
+      )}
     </div>
   );
 }
 
 // ─── DAY COLUMN ────────────────────────────────────────────────────────────────
 
-function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove, onEditNote, onDropTile, onMoveTask }) {
+function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove, onEditNote, onDropTile, onMoveTask, onTaskToNotepad, isMobile = false }) {
   const done = tasks.filter(t => t.completed).length;
   const pct  = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const isComplete = tasks.length > 0 && pct === 100;
@@ -1183,21 +1295,21 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
   return (
     <div
       onClick={onClick}
-      onDragOver={handleDragOver}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragOver={isMobile ? undefined : handleDragOver}
+      onDragEnter={isMobile ? undefined : handleDragEnter}
+      onDragLeave={isMobile ? undefined : handleDragLeave}
+      onDrop={isMobile ? undefined : handleDrop}
       className={dragOverTile ? "day-col-drop-active" : undefined}
-      style={{ flex:1, display:"flex", flexDirection:"column", borderRight:"1px solid var(--border-sub)", cursor:"pointer", transition:"background 0.15s", overflow:"hidden", background:dragOverTile?"#38D9F510":isActive?"linear-gradient(180deg,#0D1828 0%,var(--bg-base) 100%)":"var(--bg-base)", boxShadow:isActive?"inset 1px 0 0 #38D9F525,inset -1px 0 0 #38D9F525":"none" }}
+      style={{ flex:1, display:"flex", flexDirection:"column", borderRight:isMobile?"none":"1px solid var(--border-sub)", cursor:isMobile?"default":"pointer", transition:"background 0.15s", overflow:"hidden", background:dragOverTile?"#38D9F510":isActive?"linear-gradient(180deg,#0D1828 0%,var(--bg-base) 100%)":"var(--bg-base)", boxShadow:isActive && !isMobile?"inset 1px 0 0 #38D9F525,inset -1px 0 0 #38D9F525":"none" }}
     >
-      <div className={`day-header-hover${isComplete ? " day-complete-glow" : ""}`} style={{ padding:"16px 16px 12px", flexShrink:0, background:isActive?"#0D1828":isToday?"var(--accent-orange)15":"transparent", borderBottom:`1px solid ${isComplete?"var(--accent-green)60":isActive?"#38D9F530":isToday?"var(--accent-orange)":"var(--border-sub)"}` }}>
+      <div className={`day-header-hover${isComplete ? " day-complete-glow" : ""}`} style={{ padding:isMobile?"14px 16px 12px":"16px 16px 12px", flexShrink:0, background:isActive?"#0D1828":isToday?"var(--accent-orange)15":"transparent", borderBottom:`1px solid ${isComplete?"var(--accent-green)60":isActive?"#38D9F530":isToday?"var(--accent-orange)":"var(--border-sub)"}` }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
           <span style={{ fontSize:10, fontWeight:700, letterSpacing:"0.25em", color:isActive?"var(--accent-cyan)":isToday?"var(--accent-orange)":"var(--text-muted)", background:isActive?"#38D9F515":isToday?"var(--accent-orange)15":"transparent", borderRadius:5, padding:isActive?"2px 7px":"0" }}>{dayLabel}</span>
           <span style={{ fontSize:10, color:pct===100?"var(--accent-green)":"var(--text-sec)" }}>{done}/{tasks.length}</span>
         </div>
         <div style={{ marginBottom:4 }}>
           <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-            <span style={{ fontSize:isActive?36:28, fontWeight:800, letterSpacing:"-0.03em", color:isActive?"var(--text-primary)":"var(--text-sec)", fontFamily:"'Space Grotesk', sans-serif", lineHeight:1, transition:"all 0.2s" }}>{fmtDateBig(date)}</span>
+            <span style={{ fontSize:isMobile?30:(isActive?36:28), fontWeight:800, letterSpacing:"-0.03em", color:isActive?"var(--text-primary)":"var(--text-sec)", fontFamily:"'Space Grotesk', sans-serif", lineHeight:1, transition:"all 0.2s" }}>{fmtDateBig(date)}</span>
             <span style={{ fontSize:11, color:"var(--text-muted)", fontWeight:500 }}>{fmtYear(date)}</span>
           </div>
           <div style={{ fontSize:12, color:isActive?"var(--text-sec)":"var(--text-muted)", marginTop:2, fontWeight:500 }}>{fmtWeekday(date)}</div>
@@ -1209,12 +1321,12 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
       </div>
       <div
         onClick={e => e.stopPropagation()}
-        onDragLeave={(e) => { if (isTaskDrag(e) && !e.currentTarget.contains(e.relatedTarget)) setDragOverIndex(null); }}
-        style={{ flex:1, overflowY:"auto", padding:"12px 10px" }}
+        onDragLeave={isMobile ? undefined : (e) => { if (isTaskDrag(e) && !e.currentTarget.contains(e.relatedTarget)) setDragOverIndex(null); }}
+        style={{ flex:1, overflowY:"auto", padding:isMobile?"12px 14px":"12px 10px", WebkitOverflowScrolling:"touch" }}
       >
         {tasks.length === 0 ? (
           <p style={{ fontSize:12, color:dragOverTile?"var(--accent-cyan)":"var(--text-dim)", textAlign:"center", marginTop:40, lineHeight:1.7, transition:"color 0.15s" }}>
-            {dragOverTile ? <>↓ drop to schedule here</> : <>— no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>hover a chapter → + · drag a tile in</span></>}</>}
+            {dragOverTile ? <>↓ drop to schedule here</> : isMobile ? <>— no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>add from Syllabus or Notepad tab</span></>}</> : <>— no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>hover a chapter → + · drag a tile in</span></>}</>}
           </p>
         ) : (
           <>
@@ -1223,17 +1335,20 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
                 {dragOverIndex === i && <div className="task-drop-indicator" />}
                 <TaskCard
                   task={t}
+                  isMobile={isMobile}
                   dimmed={draggingTaskId === t.id}
                   onToggle={() => onToggle(t.id)}
                   onRemove={() => onRemove(t.id)}
                   onEditNote={(note) => onEditNote(t.id, note)}
-                  onDragStart={(e) => {
+                  onMoveToNotepad={() => onTaskToNotepad?.(t.id, date)}
+                  onMoveRelative={(offset) => onMoveTask?.(t.id, date, shiftDateStr(date, offset), Number.MAX_SAFE_INTEGER)}
+                  onDragStart={isMobile ? undefined : (e) => {
                     e.dataTransfer.effectAllowed = "move";
                     e.dataTransfer.setData("application/x-jee-task", JSON.stringify({ taskId:t.id, fromDate:date }));
                     setDraggingTaskId(t.id);
                   }}
-                  onDragEnd={() => { setDraggingTaskId(null); setDragOverIndex(null); }}
-                  onDragOver={(e) => {
+                  onDragEnd={isMobile ? undefined : () => { setDraggingTaskId(null); setDragOverIndex(null); }}
+                  onDragOver={isMobile ? undefined : (e) => {
                     if (!isTaskDrag(e)) return;
                     e.preventDefault(); e.stopPropagation();
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -1255,36 +1370,46 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
 
 // ─── NOTE ROW ──────────────────────────────────────────────────────────────────
 
-function NoteRow({ note, dragging, onDragStart, onDragEnd, onToggle, onDelete, onEditNote }) {
+function NoteRow({ note, dragging, onDragStart, onDragEnd, onToggle, onDelete, onEditNote, isMobile = false, onScheduleRelative }) {
   const { badgeColor, badgeBg, badgeBorder, badgeText, isChapterLike } = getChapterTheme(note.text);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState(note.note ?? "");
   const [hovered, setHovered] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => { if (editing) { setDraft(note.note ?? ""); requestAnimationFrame(() => { inputRef.current?.focus(); inputRef.current?.select(); }); } }, [editing]);
 
   const commitNote = () => { onEditNote?.(draft.trim()); setEditing(false); };
   const cancelNote = () => setEditing(false);
+  const showNoteAffordance = isMobile || hovered;
+
+  const sheetActions = [
+    { icon:"📅", label:"Schedule for today", onSelect:() => onScheduleRelative?.(0) },
+    { icon:"▶", label:"Schedule for tomorrow", onSelect:() => onScheduleRelative?.(1) },
+    { icon:"✎", label:"Edit note", onSelect:() => setEditing(true) },
+    { icon:"✓", label:note.done ? "Mark as open" : "Mark as done", onSelect:onToggle },
+    { icon:"✕", label:"Delete", danger:true, onSelect:onDelete },
+  ];
 
   return (
     <div
       className="note-row-in"
-      draggable={!editing}
+      draggable={!isMobile && !editing}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onMouseEnter={() => { setHovered(true); }}
       onMouseLeave={() => setHovered(false)}
-      style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 10px", borderRadius:12, border:`1px solid ${note.done ? "var(--border-sub)" : "var(--border-main)"}`, background:note.done ? "var(--bg-surface)" : "var(--bg-elevated)", opacity:dragging ? 0.35 : (note.done ? 0.72 : 1), transform: hovered && !dragging && !editing ? "translateY(-1px)" : "translateY(0)", transition:"opacity 0.15s, transform 0.15s", cursor: editing ? "default" : "grab" }}
+      style={{ display:"flex", alignItems:"center", gap:8, padding:"9px 10px", borderRadius:12, border:`1px solid ${note.done ? "var(--border-sub)" : "var(--border-main)"}`, background:note.done ? "var(--bg-surface)" : "var(--bg-elevated)", opacity:dragging ? 0.35 : (note.done ? 0.72 : 1), transform: !isMobile && hovered && !dragging && !editing ? "translateY(-1px)" : "translateY(0)", transition:"opacity 0.15s, transform 0.15s", cursor: isMobile || editing ? "default" : "grab" }}
     >
-      <span title="Drag onto a day (or notepad) to schedule" style={{ flexShrink:0, cursor:"grab", color:"var(--text-dim)", fontSize:12, lineHeight:1, userSelect:"none", padding:"0 1px" }}>⠿</span>
+      {!isMobile && <span title="Drag onto a day (or notepad) to schedule" style={{ flexShrink:0, cursor:"grab", color:"var(--text-dim)", fontSize:12, lineHeight:1, userSelect:"none", padding:"0 1px" }}>⠿</span>}
       <button
         onClick={onToggle}
         className="press-scale"
         aria-label={note.done ? "Mark note as open" : "Mark note as done"}
-        style={{ width:18, height:18, borderRadius:5, flexShrink:0, border:`2px solid ${note.done ? "var(--accent-green)" : "var(--border-main)"}`, background:note.done ? "rgba(61, 252, 154, 0.18)" : "transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}
+        style={{ width:isMobile?22:18, height:isMobile?22:18, borderRadius:6, flexShrink:0, border:`2px solid ${note.done ? "var(--accent-green)" : "var(--border-main)"}`, background:note.done ? "rgba(61, 252, 154, 0.18)" : "transparent", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}
       >
-        {note.done && <span style={{ color:"var(--accent-green)", fontSize:10, lineHeight:1 }}>✓</span>}
+        {note.done && <span style={{ color:"var(--accent-green)", fontSize:isMobile?12:10, lineHeight:1 }}>✓</span>}
       </button>
 
       <div style={{ minWidth:0, flex:1, display:"flex", flexDirection:"column", gap:4 }}>
@@ -1306,36 +1431,44 @@ function NoteRow({ note, dragging, onDragStart, onDragEnd, onToggle, onDelete, o
             onKeyDown={e => { if (e.key==="Enter") commitNote(); if (e.key==="Escape") cancelNote(); }}
             onBlur={commitNote}
             placeholder="Optional note"
-            style={{ width:"100%", background:"var(--bg-surface)", border:`1px solid ${badgeBorder}`, borderRadius:6, fontSize:11, color:"var(--text-primary)", padding:"3px 7px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:badgeColor }}
+            style={{ width:"100%", background:"var(--bg-surface)", border:`1px solid ${badgeBorder}`, borderRadius:6, fontSize:11, color:"var(--text-primary)", padding:"4px 7px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:badgeColor }}
           />
         ) : note.note ? (
-          <span onClick={() => !note.done && setEditing(true)} title={note.done?undefined:"Click to edit note"}
-            style={{ fontSize:11, lineHeight:1.45, color:note.done ? "var(--text-muted)" : "var(--text-sec)", textDecoration:note.done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:note.done?"default":"text" }}>
+          <span onClick={() => !isMobile && !note.done && setEditing(true)} title={!isMobile && !note.done ? "Click to edit note" : undefined}
+            style={{ fontSize:11, lineHeight:1.45, color:note.done ? "var(--text-muted)" : "var(--text-sec)", textDecoration:note.done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", cursor:!isMobile && !note.done ? "text" : "default" }}>
             {note.note}
           </span>
-        ) : (!note.done && hovered) ? (
-          <span onClick={() => setEditing(true)} style={{ fontSize:10, color:"var(--text-dim)", fontStyle:"italic", cursor:"text" }}>+ add note</span>
+        ) : (!note.done && showNoteAffordance) ? (
+          <span onClick={() => !isMobile && setEditing(true)} style={{ fontSize:10, color:"var(--text-dim)", fontStyle:"italic", cursor:!isMobile?"text":"default" }}>+ add note</span>
         ) : (!isChapterLike && (
           <span style={{ fontSize:10, color:"var(--text-dim)" }}>Free-form reminder</span>
         ))}
       </div>
 
-      <button
-        onClick={onDelete}
-        className="press-scale"
-        style={{ flexShrink:0, border:"1px solid #3A2230", background:"#1E0E18", padding:"2px 7px", borderRadius:6, color:"#FF8FA3", fontSize:10, letterSpacing:"0.12em", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = "#2E1020"; e.currentTarget.style.color = "#FFD5DD"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = "#1E0E18"; e.currentTarget.style.color = "#FF8FA3"; }}
-      >
-        DEL
-      </button>
+      {isMobile ? (
+        <button onClick={() => setSheetOpen(true)} className="press-scale" aria-label="Note actions" style={{ flexShrink:0, width:30, height:26, borderRadius:6, border:"1px solid var(--border-main)", background:"var(--bg-surface)", color:"var(--text-sec)", fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>⋮</button>
+      ) : (
+        <button
+          onClick={onDelete}
+          className="press-scale"
+          style={{ flexShrink:0, border:"1px solid #3A2230", background:"#1E0E18", padding:"2px 7px", borderRadius:6, color:"#FF8FA3", fontSize:10, letterSpacing:"0.12em", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "#2E1020"; e.currentTarget.style.color = "#FFD5DD"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "#1E0E18"; e.currentTarget.style.color = "#FF8FA3"; }}
+        >
+          DEL
+        </button>
+      )}
+
+      {isMobile && (
+        <MobileActionSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={note.text} subtitle="Note actions" actions={sheetActions} />
+      )}
     </div>
   );
 }
 
 // ─── NOTEPAD ───────────────────────────────────────────────────────────────────
 
-function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDeleteNote, onEditNote, onClearDone, onTaskDrop }) {
+function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDeleteNote, onEditNote, onClearDone, onTaskDrop, isMobile = false, onScheduleRelative }) {
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverTile, setDragOverTile] = useState(false);
   const dragCounterTile = useRef(0);
@@ -1370,17 +1503,17 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
 
   return (
     <section
-      onDragOver={handleDragOver}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragOver={isMobile ? undefined : handleDragOver}
+      onDragEnter={isMobile ? undefined : handleDragEnter}
+      onDragLeave={isMobile ? undefined : handleDragLeave}
+      onDrop={isMobile ? undefined : handleDrop}
       className={dragOverTile ? "day-col-drop-active" : undefined}
-      style={{ height, flexShrink:0, display:"flex", flexDirection:"column", borderBottom:"1px solid var(--border-sub)", background:dragOverTile?"#38D9F510":"linear-gradient(180deg, rgba(13,19,32,0.98), rgba(8,12,20,0.98))", transition: resizing ? "background 0.15s" : "height 0.22s cubic-bezier(0.34,1.2,0.64,1), background 0.15s", overflow:"hidden" }}>
-      <div style={{ padding:"12px 14px 10px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
+      style={{ height:isMobile?"100%":height, flexShrink:0, display:"flex", flexDirection:"column", borderBottom:isMobile?"none":"1px solid var(--border-sub)", background:dragOverTile?"#38D9F510":"linear-gradient(180deg, rgba(13,19,32,0.98), rgba(8,12,20,0.98))", transition: resizing ? "background 0.15s" : "height 0.22s cubic-bezier(0.34,1.2,0.64,1), background 0.15s", overflow:"hidden" }}>
+      <div style={{ padding:isMobile?"14px 16px 12px":"12px 14px 10px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
           <div>
             <div style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--accent-orange)", userSelect:"none" }}>TODO NOTEPAD</div>
-            <div style={{ fontSize:12, color:"var(--text-sec)", marginTop:4 }}>Drag from the syllabus or a day to queue it here · drag ⠿ back out to schedule.</div>
+            <div style={{ fontSize:12, color:"var(--text-sec)", marginTop:4 }}>{isMobile ? "Add chapters from the Syllabus tab · tap ⋮ to schedule." : "Drag from the syllabus or a day to queue it here · drag ⠿ back out to schedule."}</div>
           </div>
           <div style={{ display:"flex", gap:6, flexShrink:0 }}>
             <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:999, padding:"2px 8px" }}>{pendingCount} open</span>
@@ -1390,7 +1523,7 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
 
         {notes.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginTop:10 }}>
-            <span style={{ fontSize:10, color:"var(--text-dim)", letterSpacing:"0.12em" }}>CHECK A NOTE TO MARK IT DONE</span>
+            <span style={{ fontSize:10, color:"var(--text-dim)", letterSpacing:"0.12em" }}>{isMobile ? "TAP TO MARK DONE" : "CHECK A NOTE TO MARK IT DONE"}</span>
             <button
               onClick={onClearDone}
               className="press-scale"
@@ -1404,26 +1537,28 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
         )}
       </div>
 
-      <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"10px 10px 12px", display:"flex", flexDirection:"column", gap:8 }}>
+      <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:isMobile?"10px 14px 16px":"10px 10px 12px", display:"flex", flexDirection:"column", gap:8, WebkitOverflowScrolling:"touch" }}>
         {sortedNotes.length === 0 ? (
           <div style={{ padding:"16px 8px", border:`1px dashed ${dragOverTile?"var(--accent-cyan)":"var(--border-sub)"}`, borderRadius:12, textAlign:"center", color:dragOverTile?"var(--accent-cyan)":"var(--text-dim)", fontSize:12, lineHeight:1.7, transition:"color 0.15s, border-color 0.15s" }}>
-            {dragOverTile ? "↓ drop to add as a note" : "Drag a chapter from the syllabus, or a task off the calendar, in here."}
+            {dragOverTile ? "↓ drop to add as a note" : isMobile ? "Head to the Syllabus tab and tap + on a chapter to queue it here." : "Drag a chapter from the syllabus, or a task off the calendar, in here."}
           </div>
         ) : sortedNotes.map((note) => (
           <NoteRow
             key={note.id}
             note={note}
             dragging={draggingId === note.id}
+            isMobile={isMobile}
             onToggle={() => onToggleNote(note.id)}
             onDelete={() => onDeleteNote(note.id)}
             onEditNote={(newNote) => onEditNote(note.id, newNote)}
-            onDragStart={(e) => {
+            onScheduleRelative={(offset) => onScheduleRelative?.(note, offset)}
+            onDragStart={isMobile ? undefined : (e) => {
               e.dataTransfer.effectAllowed = "copy";
               e.dataTransfer.setData("application/x-jee-tile", JSON.stringify({ text: note.text, note: note.note }));
               e.dataTransfer.setData("text/plain", note.note ? `${note.text} — ${note.note}` : note.text);
               setDraggingId(note.id);
             }}
-            onDragEnd={() => setDraggingId(null)}
+            onDragEnd={isMobile ? undefined : () => setDraggingId(null)}
           />
         ))}
       </div>
@@ -1598,9 +1733,9 @@ function HelpPanel({ open: isOpen, onClose }) {
   ];
 
   return (
-    <div className="help-overlay" style={{ position:"absolute", inset:0, zIndex:40, background:"rgba(2,6,12,0.7)", backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)", overflowY:"auto", display:"flex", flexDirection:"column", alignItems:"center", padding:"0 16px 24px" }}>
-      <div className="help-panel" style={{ width:"100%", maxWidth:900, marginTop:0, borderRadius:"0 0 20px 20px", border:"1px solid var(--border-main)", borderTop:"none", background:"var(--bg-surface)", boxShadow:"0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px #38D9F510", overflow:"hidden" }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"18px 24px", borderBottom:"1px solid var(--border-sub)", background:"linear-gradient(to right,#38D9F508,transparent)" }}>
+    <div className="help-overlay" style={{ position:"absolute", inset:0, zIndex:40, background:"rgba(2,6,12,0.7)", backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)", display:"flex", flexDirection:"column", alignItems:"center", padding:"0 16px 24px", overflow:"hidden" }}>
+      <div className="help-panel" style={{ width:"100%", maxWidth:900, maxHeight:"100%", marginTop:0, borderRadius:"0 0 20px 20px", border:"1px solid var(--border-main)", borderTop:"none", background:"var(--bg-surface)", boxShadow:"0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px #38D9F510", overflow:"hidden", display:"flex", flexDirection:"column" }}>
+        <div style={{ flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"18px 24px", borderBottom:"1px solid var(--border-sub)", background:"linear-gradient(to right,#38D9F508,transparent)" }}>
           <div>
             <p style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--accent-cyan)", margin:0 }}>JEE//OS · HELP</p>
             <h2 style={{ fontSize:22, color:"var(--text-primary)", fontWeight:700, margin:"4px 0 0", fontFamily:"'Space Grotesk', sans-serif" }}>Shortcuts & Command Guide</h2>
@@ -1614,27 +1749,29 @@ function HelpPanel({ open: isOpen, onClose }) {
           </div>
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(340px,1fr))", gap:16, padding:24 }}>
-          {sections.map(sec => (
-            <section key={sec.title} style={{ borderRadius:14, border:"1px solid var(--border-sub)", background:"var(--bg-elevated)", padding:18 }}>
-              <h3 style={{ fontSize:10, letterSpacing:"0.22em", color:sec.color, marginBottom:14, marginTop:0 }}>{sec.title}</h3>
-              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {sec.items.map(([key, desc]) => (
-                  <div key={key} style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
-                    <span style={{ fontSize:11, color:"var(--text-primary)", background:"var(--bg-surface)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 8px", flexShrink:0, whiteSpace:"nowrap", fontFamily:"'JetBrains Mono', monospace" }}>{key}</span>
-                    <span style={{ fontSize:12, color:"var(--text-sec)", lineHeight:1.5, paddingTop:2 }}>{desc}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+        <div style={{ flex:1, minHeight:0, overflowY:"auto" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(340px,1fr))", gap:16, padding:24 }}>
+            {sections.map(sec => (
+              <section key={sec.title} style={{ borderRadius:14, border:"1px solid var(--border-sub)", background:"var(--bg-elevated)", padding:18 }}>
+                <h3 style={{ fontSize:10, letterSpacing:"0.22em", color:sec.color, marginBottom:14, marginTop:0 }}>{sec.title}</h3>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {sec.items.map(([key, desc]) => (
+                    <div key={key} style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
+                      <span style={{ fontSize:11, color:"var(--text-primary)", background:"var(--bg-surface)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 8px", flexShrink:0, whiteSpace:"nowrap", fontFamily:"'JetBrains Mono', monospace" }}>{key}</span>
+                      <span style={{ fontSize:12, color:"var(--text-sec)", lineHeight:1.5, paddingTop:2 }}>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
 
-        <div style={{ padding:"12px 24px 20px", borderTop:"1px solid var(--border-sub)", textAlign:"center" }}>
-          <span style={{ fontSize:11, color:"var(--text-muted)" }}>
-            Press <span style={{ color:"var(--accent-cyan)", fontFamily:"monospace" }}>?</span> to reopen ·
-            Format: <span style={{ color:"var(--accent-cyan)" }}>[subject] chapter [/note] [@day]</span> · Tab autocompletes
-          </span>
+          <div style={{ padding:"12px 24px 20px", borderTop:"1px solid var(--border-sub)", textAlign:"center" }}>
+            <span style={{ fontSize:11, color:"var(--text-muted)" }}>
+              Press <span style={{ color:"var(--accent-cyan)", fontFamily:"monospace" }}>?</span> to reopen ·
+              Format: <span style={{ color:"var(--accent-cyan)" }}>[subject] chapter [/note] [@day]</span> · Tab autocompletes
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -1676,7 +1813,7 @@ function DensityDots({ tasks }) {
   );
 }
 
-function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate }) {
+function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMobile }) {
   const today = todayStr();
   const [viewYear,  setViewYear]  = useState(() => parseInt(activeDate.split("-")[0]));
   const [viewMonth, setViewMonth] = useState(() => parseInt(activeDate.split("-")[1])-1);
@@ -1743,89 +1880,122 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate }) {
   const monthDone  = monthTasks.filter(t=>t.completed).length;
 
   return (
-    <div className="cal-overlay" style={{ position:"absolute", inset:0, zIndex:60, background:"rgba(2,6,12,0.75)", backdropFilter:"blur(10px)", WebkitBackdropFilter:"blur(10px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }} onClick={onClose}>
-      <div className="cal-panel" style={{ background:"var(--bg-surface)", border:"1px solid var(--border-main)", borderRadius:20, boxShadow:"0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px #38D9F510", width:"100%", maxWidth:740, overflow:"hidden", fontFamily:"'JetBrains Mono', monospace" }} onClick={e=>e.stopPropagation()}>
+    <div className="cal-overlay" style={{ position:"absolute", inset:0, zIndex:60, background:"rgba(2,6,12,0.75)", backdropFilter:"blur(10px)", WebkitBackdropFilter:"blur(10px)", display:"flex", alignItems:"center", justifyContent:"center", padding:isMobile?12:24, overflow:"hidden" }} onClick={onClose}>
+      <div className="cal-panel" style={{ background:"var(--bg-surface)", border:"1px solid var(--border-main)", borderRadius:20, boxShadow:"0 40px 100px rgba(0,0,0,0.8), 0 0 0 1px #38D9F510", width:"100%", maxWidth:740, maxHeight:"100%", overflow:"hidden", fontFamily:"'JetBrains Mono', monospace", display:"flex", flexDirection:"column" }} onClick={e=>e.stopPropagation()}>
 
         {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"18px 24px 14px", background:"linear-gradient(to right,#38D9F508,transparent)", borderBottom:"1px solid var(--border-sub)" }}>
+        <div style={{ flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10, padding:isMobile?"14px 16px 12px":"18px 24px 14px", background:"linear-gradient(to right,#38D9F508,transparent)", borderBottom:"1px solid var(--border-sub)" }}>
           <div>
             <p style={{ margin:0, fontSize:10, letterSpacing:"0.3em", color:"var(--accent-cyan)" }}>CALENDAR</p>
-            <h2 style={{ margin:"4px 0 0", fontSize:22, fontWeight:700, color:"var(--text-primary)", fontFamily:"'Space Grotesk', sans-serif" }}>{MONTHS[viewMonth]} {viewYear}</h2>
+            <h2 style={{ margin:"4px 0 0", fontSize:isMobile?18:22, fontWeight:700, color:"var(--text-primary)", fontFamily:"'Space Grotesk', sans-serif" }}>{MONTHS[viewMonth]} {viewYear}</h2>
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ fontSize:11, color:"var(--text-muted)", letterSpacing:"0.1em" }}>THIS MONTH</div>
-              <div style={{ fontSize:14, color:"var(--accent-green)", fontWeight:600 }}>{monthDone}/{monthTasks.length} done</div>
-            </div>
+          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+            {!isMobile && (
+              <div style={{ textAlign:"right" }}>
+                <div style={{ fontSize:11, color:"var(--text-muted)", letterSpacing:"0.1em" }}>THIS MONTH</div>
+                <div style={{ fontSize:14, color:"var(--accent-green)", fontWeight:600 }}>{monthDone}/{monthTasks.length} done</div>
+              </div>
+            )}
             <div style={{ display:"flex", gap:6 }}>
-              <button onClick={prevMonth} style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-sec)", fontSize:14, padding:"6px 12px", cursor:"pointer" }}
+              <button onClick={prevMonth} className="press-scale" style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-sec)", fontSize:14, padding:isMobile?"8px 13px":"6px 12px", cursor:"pointer" }}
                 onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
               >‹</button>
-              <button onClick={goToday} style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--accent-cyan)", fontSize:11, padding:"6px 12px", cursor:"pointer", letterSpacing:"0.08em", fontFamily:"'JetBrains Mono', monospace" }}>TODAY</button>
-              <button onClick={nextMonth} style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-sec)", fontSize:14, padding:"6px 12px", cursor:"pointer" }}
+              <button onClick={goToday} className="press-scale" style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--accent-cyan)", fontSize:11, padding:isMobile?"8px 13px":"6px 12px", cursor:"pointer", letterSpacing:"0.08em", fontFamily:"'JetBrains Mono', monospace" }}>TODAY</button>
+              <button onClick={nextMonth} className="press-scale" style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-sec)", fontSize:14, padding:isMobile?"8px 13px":"6px 12px", cursor:"pointer" }}
                 onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
               >›</button>
             </div>
-            <button onClick={onClose} style={{ background:"transparent", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-muted)", fontSize:12, padding:"6px 12px", cursor:"pointer", letterSpacing:"0.1em", fontFamily:"'JetBrains Mono', monospace" }}
+            <button onClick={onClose} className="press-scale" style={{ background:"transparent", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-muted)", fontSize:12, padding:isMobile?"8px 13px":"6px 12px", cursor:"pointer", letterSpacing:"0.1em", fontFamily:"'JetBrains Mono', monospace" }}
               onMouseEnter={e=>{ e.currentTarget.style.color="var(--accent-red)"; e.currentTarget.style.borderColor="var(--accent-red)"; }}
               onMouseLeave={e=>{ e.currentTarget.style.color="var(--text-muted)"; e.currentTarget.style.borderColor="var(--border-main)"; }}
             >ESC ✕</button>
           </div>
         </div>
 
-        {/* Weekday headers */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", padding:"10px 20px 6px", borderBottom:"1px solid var(--border-sub)" }}>
-          {WEEKDAYS.map(d => <div key={d} style={{ textAlign:"center", fontSize:10, letterSpacing:"0.2em", color:d==="Sun"||d==="Sat"?"var(--text-dim)":"var(--text-muted)", fontWeight:600 }}>{d}</div>)}
-        </div>
-
-        {/* Day grid */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6, padding:"12px 20px 16px" }}>
-          {cells.map((day, idx) => {
-            if (!day) return <div key={`e${idx}`} />;
-            const ds        = makeDateStr(day);
-            const isToday   = ds===today;
-            const isSel     = ds===selected;
-            const isActive  = ds===activeDate;
-            const { tasks, total, pct } = getStats(ds);
-            const isWeekend = ((firstWeekday+day-1)%7===0)||((firstWeekday+day-1)%7===6);
-            const ringAccent = tasks.length===1 ? S[tasks[0].subject]?.accent??"#38D9F5" : "#38D9F5";
-            return (
-              <div key={ds}
-                className={`cal-day-cell${isSel?" selected":""}${isToday?" is-today":""}`}
-                onClick={() => handleCellClick(day)}
-                title={`${ds} — double-click to jump`}
-                style={{ position:"relative", borderRadius:10, border:`1px solid ${isSel?"var(--accent-cyan)":isToday?"var(--accent-orange)80":isActive?"#38D9F530":"var(--border-sub)"}`, background:isSel?"#38D9F510":isActive?"#38D9F508":isToday?"#FF9F4308":"var(--bg-elevated)", padding:"8px 6px 6px", minHeight:68, display:"flex", flexDirection:"column", alignItems:"center", userSelect:"none" }}
-              >
-                <span style={{ fontSize:isToday||isSel?15:13, fontWeight:isToday||isSel?700:400, color:isSel?"var(--accent-cyan)":isToday?"var(--accent-orange)":isActive?"var(--text-primary)":isWeekend?"var(--text-muted)":"var(--text-sec)", lineHeight:1, fontFamily:"'Space Grotesk', sans-serif" }}>{day}</span>
-                {total>0 && <span style={{ marginTop:4, fontSize:10, color:pct===100?"var(--accent-green)":"var(--text-muted)" }}>{pct===100?"✓":`${total}`}</span>}
-                {tasks.length>0 && <DensityDots tasks={tasks} />}
-                {total>0 && <CompletionRing pct={pct} size={24} accent={ringAccent} />}
-                {isActive && !isSel && <div style={{ position:"absolute", bottom:4, left:"50%", transform:"translateX(-50%)", width:4, height:4, borderRadius:"50%", background:"var(--accent-cyan)", opacity:0.7 }} />}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Footer */}
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 24px 14px", borderTop:"1px solid var(--border-sub)" }}>
-          <div style={{ display:"flex", gap:16, alignItems:"center" }}>
-            {[{ color:"var(--accent-orange)", label:"Today" },{ color:"var(--accent-cyan)", label:"Selected" },{ color:"var(--accent-green)", label:"All done" }].map(({ color, label }) => (
-              <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
-                <div style={{ width:8, height:8, borderRadius:"50%", background:color }} />
-                <span style={{ fontSize:10, color:"var(--text-muted)", letterSpacing:"0.08em" }}>{label}</span>
-              </div>
-            ))}
-            <span style={{ fontSize:10, color:"var(--text-dim)", marginLeft:4 }}>· click = select · double-click = jump</span>
+        <div style={{ flex:1, minHeight:0, overflowY:"auto" }}>
+          {/* Weekday headers */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", padding:isMobile?"10px 12px 6px":"10px 20px 6px", borderBottom:"1px solid var(--border-sub)" }}>
+            {WEEKDAYS.map(d => <div key={d} style={{ textAlign:"center", fontSize:isMobile?9:10, letterSpacing:"0.2em", color:d==="Sun"||d==="Sat"?"var(--text-dim)":"var(--text-muted)", fontWeight:600 }}>{isMobile ? d.slice(0,1) : d}</div>)}
           </div>
-          <div style={{ display:"flex", gap:8 }}>
-            <button onClick={onClose} style={{ background:"transparent", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-sec)", fontSize:12, padding:"6px 14px", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>CANCEL</button>
-            <button onClick={handleConfirm} style={{ background:"#38D9F515", border:"1px solid var(--accent-cyan)60", borderRadius:8, color:"var(--accent-cyan)", fontSize:12, padding:"6px 18px", cursor:"pointer", letterSpacing:"0.1em", fontFamily:"'JetBrains Mono', monospace", fontWeight:600 }}
-              onMouseEnter={e=>e.currentTarget.style.background="#38D9F525"} onMouseLeave={e=>e.currentTarget.style.background="#38D9F515"}
-            >JUMP → {selected ? fmtDateBig(selected) : "—"}</button>
+
+          {/* Day grid */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:isMobile?4:6, padding:isMobile?"10px 12px 14px":"12px 20px 16px" }}>
+            {cells.map((day, idx) => {
+              if (!day) return <div key={`e${idx}`} />;
+              const ds        = makeDateStr(day);
+              const isToday   = ds===today;
+              const isSel     = ds===selected;
+              const isActive  = ds===activeDate;
+              const { tasks, total, pct } = getStats(ds);
+              const isWeekend = ((firstWeekday+day-1)%7===0)||((firstWeekday+day-1)%7===6);
+              const ringAccent = tasks.length===1 ? S[tasks[0].subject]?.accent??"#38D9F5" : "#38D9F5";
+              return (
+                <div key={ds}
+                  className={`cal-day-cell${isSel?" selected":""}${isToday?" is-today":""}`}
+                  onClick={() => handleCellClick(day)}
+                  title={`${ds} — double-click to jump`}
+                  style={{ position:"relative", borderRadius:10, border:`1px solid ${isSel?"var(--accent-cyan)":isToday?"var(--accent-orange)80":isActive?"#38D9F530":"var(--border-sub)"}`, background:isSel?"#38D9F510":isActive?"#38D9F508":isToday?"#FF9F4308":"var(--bg-elevated)", padding:isMobile?"6px 3px 5px":"8px 6px 6px", minHeight:isMobile?54:68, display:"flex", flexDirection:"column", alignItems:"center", userSelect:"none" }}
+                >
+                  <span style={{ fontSize:isToday||isSel?(isMobile?13:15):(isMobile?12:13), fontWeight:isToday||isSel?700:400, color:isSel?"var(--accent-cyan)":isToday?"var(--accent-orange)":isActive?"var(--text-primary)":isWeekend?"var(--text-muted)":"var(--text-sec)", lineHeight:1, fontFamily:"'Space Grotesk', sans-serif" }}>{day}</span>
+                  {total>0 && <span style={{ marginTop:4, fontSize:isMobile?9:10, color:pct===100?"var(--accent-green)":"var(--text-muted)" }}>{pct===100?"✓":`${total}`}</span>}
+                  {tasks.length>0 && !isMobile && <DensityDots tasks={tasks} />}
+                  {total>0 && <CompletionRing pct={pct} size={isMobile?18:24} accent={ringAccent} />}
+                  {isActive && !isSel && <div style={{ position:"absolute", bottom:4, left:"50%", transform:"translateX(-50%)", width:4, height:4, borderRadius:"50%", background:"var(--accent-cyan)", opacity:0.7 }} />}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10, padding:isMobile?"10px 16px 14px":"10px 24px 14px", borderTop:"1px solid var(--border-sub)" }}>
+            {!isMobile && (
+              <div style={{ display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
+                {[{ color:"var(--accent-orange)", label:"Today" },{ color:"var(--accent-cyan)", label:"Selected" },{ color:"var(--accent-green)", label:"All done" }].map(({ color, label }) => (
+                  <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
+                    <div style={{ width:8, height:8, borderRadius:"50%", background:color }} />
+                    <span style={{ fontSize:10, color:"var(--text-muted)", letterSpacing:"0.08em" }}>{label}</span>
+                  </div>
+                ))}
+                <span style={{ fontSize:10, color:"var(--text-dim)", marginLeft:4 }}>· click = select · double-click = jump</span>
+              </div>
+            )}
+            <div style={{ display:"flex", gap:8, width:isMobile?"100%":"auto" }}>
+              <button onClick={onClose} className="press-scale" style={{ flex:isMobile?1:"none", background:"transparent", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-sec)", fontSize:12, padding:"8px 14px", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>CANCEL</button>
+              <button onClick={handleConfirm} className="press-scale" style={{ flex:isMobile?2:"none", background:"#38D9F515", border:"1px solid var(--accent-cyan)60", borderRadius:8, color:"var(--accent-cyan)", fontSize:12, padding:"8px 18px", cursor:"pointer", letterSpacing:"0.1em", fontFamily:"'JetBrains Mono', monospace", fontWeight:600 }}
+                onMouseEnter={e=>e.currentTarget.style.background="#38D9F525"} onMouseLeave={e=>e.currentTarget.style.background="#38D9F515"}
+              >JUMP → {selected ? fmtDateBig(selected) : "—"}</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── MOBILE TAB BAR ────────────────────────────────────────────────────────────
+
+const MOBILE_TABS = [
+  { key:"syllabus", label:"Syllabus", icon:"📚" },
+  { key:"calendar", label:"Today",    icon:"▦" },
+  { key:"notepad",  label:"Notepad",  icon:"✎" },
+  { key:"ledger",   label:"Ledger",   icon:"✓" },
+];
+
+function MobileTabBar({ active, onChange }) {
+  return (
+    <nav className="safe-bottom" style={{ flexShrink:0, display:"flex", alignItems:"stretch", background:"var(--bg-surface)", borderTop:"1px solid var(--border-main)", zIndex:10 }}>
+      {MOBILE_TABS.map(tab => {
+        const isActive = active === tab.key;
+        return (
+          <button key={tab.key} onClick={() => onChange(tab.key)} className="tab-bar-btn press-scale"
+            style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, padding:"8px 4px 6px", background:"transparent", border:"none", cursor:"pointer", color: isActive ? "var(--accent-cyan)" : "var(--text-muted)", fontFamily:"'JetBrains Mono', monospace" }}
+          >
+            <span style={{ fontSize:17, lineHeight:1 }}>{tab.icon}</span>
+            <span style={{ fontSize:9, letterSpacing:"0.06em" }}>{tab.label}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -1870,12 +2040,33 @@ export default function App() {
   });
   const [resizingSidebar, setResizingSidebar] = useState(false);
 
+  const isMobile = useIsMobile();
+  const [mobileTab, setMobileTab] = useState("calendar"); // syllabus | calendar | notepad | ledger
+
   const { toasts, push: pushToast } = useToast();
 
   const cmdRef    = useRef(null);
   const saveTimer = useRef(null);
 
   const moveActive = useCallback((step) => setActiveDate(d => shiftDateStr(d, step)), []);
+
+  const touchStartXRef = useRef(null);
+  const touchStartYRef = useRef(null);
+  const handleDayTouchStart = useCallback((e) => {
+    const t = e.touches[0];
+    touchStartXRef.current = t.clientX;
+    touchStartYRef.current = t.clientY;
+  }, []);
+  const handleDayTouchEnd = useCallback((e) => {
+    if (touchStartXRef.current == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartXRef.current;
+    const dy = t.clientY - (touchStartYRef.current ?? t.clientY);
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return;
+    moveActive(dx < 0 ? 1 : -1);
+  }, [moveActive]);
 
   useEffect(() => {
     window.localStorage.setItem("jee-os-notepad-height", String(notepadHeight));
@@ -2096,6 +2287,13 @@ export default function App() {
     pushToast(`Scheduled "${chapter}" → ${fmtDateBig(date)}`, { icon:"📌" });
   }, [addTask, pushToast]);
 
+  // Mobile equivalent of dragging a notepad tile onto a day: pick a relative
+  // day (today / tomorrow) from the note's action sheet instead.
+  const scheduleNoteRelative = useCallback((note, offsetDays) => {
+    const date = shiftDateStr(todayStr(), offsetDays);
+    handleTileDrop(date, { text:note.text, note:note.note });
+  }, [handleTileDrop]);
+
   const handleSwapFile = async () => {
     try {
       const fh = await openFilePicker();
@@ -2131,42 +2329,49 @@ export default function App() {
   return (
     <>
       <InjectStyles />
-      <div style={{ height:"100vh", background:"var(--bg-base)", color:"var(--text-primary)", display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:"'JetBrains Mono', monospace", position:"relative" }}>
+      <div className="app-shell" style={{ background:"var(--bg-base)", color:"var(--text-primary)", display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:"'JetBrains Mono', monospace", position:"relative" }}>
 
         {/* ── HEADER ── */}
-        <header style={{ flexShrink:0, display:"flex", alignItems:"center", gap:12, padding:"10px 16px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
-          <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
-          <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.2</span>
+        <header className={isMobile ? "safe-top" : undefined} style={{ flexShrink:0, display:"flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 8 : 12, padding: isMobile ? "8px 10px" : "10px 16px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
+            {!isMobile && <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.2</span>}
 
-          <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />
+            {!isMobile && <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />}
 
-          <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
-            {saveStatus !== "idle" && (
-              <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, letterSpacing:"0.1em", color: saveStatus==="saving" ? "var(--accent-orange)" : "var(--accent-green)", padding:"0 2px", userSelect:"none" }}>
-                <span style={{ width:6, height:6, borderRadius:"50%", background:"currentColor", flexShrink:0, animation: saveStatus==="saving" ? "pulse 1s ease-in-out infinite" : "none" }} />
-                {saveStatus==="saving" ? "SAVING…" : "SAVED"}
-              </span>
-            )}
-            <span style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>🔥 {data.meta?.streakCount??0}d</span>
-            <span className={totalDoneBump ? "count-bump" : undefined} style={{ display:"inline-block", fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>✓ {totalDone}</span>
-            <button className="press-scale" onClick={() => setShowCalendar(true)} title="Full calendar (C)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
-              onMouseEnter={e=>e.currentTarget.style.color="var(--accent-purple)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-            >▦ CAL</button>
-            <button className="press-scale" onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
-              onMouseEnter={e=>e.currentTarget.style.color="var(--accent-cyan)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-            >? HELP</button>
-            <button onClick={handleSwapFile} title="Switch data file" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
-              onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-            >⚙</button>
+            <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft: isMobile ? "auto" : 0 }}>
+              {saveStatus !== "idle" && (
+                <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, letterSpacing:"0.1em", color: saveStatus==="saving" ? "var(--accent-orange)" : "var(--accent-green)", padding:"0 2px", userSelect:"none" }}>
+                  <span style={{ width:6, height:6, borderRadius:"50%", background:"currentColor", flexShrink:0, animation: saveStatus==="saving" ? "pulse 1s ease-in-out infinite" : "none" }} />
+                  {isMobile ? null : (saveStatus==="saving" ? "SAVING…" : "SAVED")}
+                </span>
+              )}
+              {!isMobile && <span style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>🔥 {data.meta?.streakCount??0}d</span>}
+              {!isMobile && <span className={totalDoneBump ? "count-bump" : undefined} style={{ display:"inline-block", fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>✓ {totalDone}</span>}
+              {!isMobile && (
+                <button className="press-scale" onClick={() => setShowCalendar(true)} title="Full calendar (C)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+                  onMouseEnter={e=>e.currentTarget.style.color="var(--accent-purple)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+                >▦ CAL</button>
+              )}
+              <button className="press-scale" onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding: isMobile ? "5px 9px" : "4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+                onMouseEnter={e=>e.currentTarget.style.color="var(--accent-cyan)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+              >{isMobile ? "?" : "? HELP"}</button>
+              <button onClick={handleSwapFile} title="Switch data file" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding: isMobile ? "5px 9px" : "4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
+                onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+              >⚙</button>
+            </div>
           </div>
+
+          {isMobile && <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />}
         </header>
 
         {/* ── BODY ── */}
         <div style={{ position:"relative", flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
           <Toaster toasts={toasts} />
           <HelpPanel    open={showHelp}     onClose={() => setShowHelp(false)} />
-          <CalendarOverlay open={showCalendar} onClose={() => setShowCalendar(false)} data={data} activeDate={activeDate} setActiveDate={setActiveDate} />
+          <CalendarOverlay open={showCalendar} onClose={() => setShowCalendar(false)} data={data} activeDate={activeDate} setActiveDate={setActiveDate} isMobile={isMobile} />
 
+          {!isMobile && (
           <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
 
             {/* Syllabus tree — collapsible + resizable, unified smart search */}
@@ -2286,6 +2491,98 @@ export default function App() {
               </div>
             </aside>
           </div>
+          )}
+
+          {/* ── MOBILE SINGLE-PANE BODY ── */}
+          {isMobile && (
+          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+
+            {mobileTab === "syllabus" && (
+              <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", minWidth:0 }}>
+                <div style={{ flexShrink:0, borderBottom:"1px solid var(--border-sub)", position:"sticky", top:0, background:"var(--bg-base)", zIndex:2 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px 6px", gap:8 }}>
+                    <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>SYLLABUS</span>
+                    <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:5, padding:"1px 7px", whiteSpace:"nowrap" }}>→ {fmtDateBig(activeDate)}</span>
+                  </div>
+                  <div style={{ padding:"0 10px 10px" }}>
+                    <SyllabusSearchBar onAddNote={addNote} onQueryChange={setSyllabusQuery} />
+                  </div>
+                </div>
+                {Object.entries(JEE_SYLLABUS).map(([subject, classes]) => (
+                  <SubjectTree key={subject} subject={subject} classes={classes} activeDate={activeDate} onAddTask={addTask} searchQ={syllabusQuery} isMobile />
+                ))}
+              </div>
+            )}
+
+            {mobileTab === "calendar" && (
+              <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+                <div style={{ flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", gap:6, padding:"8px 10px", borderBottom:"1px solid var(--border-sub)" }}>
+                  <button onClick={()=>moveActive(-1)} className="press-scale" style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, color:"var(--text-sec)", fontSize:14, padding:"6px 12px", cursor:"pointer" }}>‹</button>
+                  <button onClick={()=>setShowCalendar(true)} className="press-scale" style={{ flex:1, background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, color: activeDate===today ? "var(--accent-orange)" : "var(--text-primary)", fontSize:12, fontWeight:600, padding:"7px 10px", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>
+                    {activeDate===today ? "TODAY · " : ""}{fmtDateBig(activeDate)}
+                  </button>
+                  <button onClick={()=>moveActive(1)} className="press-scale" style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, color:"var(--text-sec)", fontSize:14, padding:"6px 12px", cursor:"pointer" }}>›</button>
+                </div>
+                <div style={{ flex:1, overflow:"hidden", display:"flex" }} onTouchStart={handleDayTouchStart} onTouchEnd={handleDayTouchEnd}>
+                  <DayColumn date={activeDate} tasks={data.days[activeDate]?.tasks??[]}
+                    isToday={activeDate===today} isActive
+                    onClick={()=>{}}
+                    onToggle={tid => toggleTask(activeDate,tid)}
+                    onRemove={tid => removeTask(activeDate,tid)}
+                    onEditNote={(tid, note) => editTaskNote(activeDate, tid, note)}
+                    onDropTile={payload => handleTileDrop(activeDate, payload)}
+                    onMoveTask={(taskId, fromDate, toDate, toIndex) => moveTask(taskId, fromDate, toDate, toIndex)}
+                    onTaskToNotepad={moveTaskToNotepad}
+                    isMobile
+                  />
+                </div>
+              </div>
+            )}
+
+            {mobileTab === "notepad" && (
+              <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                <NotepadPanel
+                  notes={data.notes ?? []}
+                  height={notepadHeight}
+                  resizing={false}
+                  onAddNote={addNote}
+                  onToggleNote={toggleNote}
+                  onDeleteNote={deleteNote}
+                  onEditNote={editNoteText}
+                  onClearDone={clearDoneNotes}
+                  onTaskDrop={moveTaskToNotepad}
+                  isMobile
+                  onScheduleRelative={scheduleNoteRelative}
+                />
+              </div>
+            )}
+
+            {mobileTab === "ledger" && (
+              <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                <div style={{ padding:"10px 14px 8px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+                    <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>MASTERY LEDGER</span>
+                    <span style={{ fontSize:10, color:"var(--accent-green)", background:"#3DFC9A15", border:"1px solid #3DFC9A25", borderRadius:5, padding:"1px 7px" }}>{totalDone} logged</span>
+                  </div>
+                  <div style={{ position:"relative" }}>
+                    <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-60%)", fontSize:12, color:"var(--text-muted)", pointerEvents:"none" }}>🔍</span>
+                    <input value={ledgerSearch} onChange={e=>setLedgerSearch(e.target.value)} placeholder="Search ledger..."
+                      style={{ width:"100%", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, padding:"7px 26px 7px 28px", fontSize:16, color:"var(--text-primary)", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:"var(--accent-cyan)" }}
+                      onFocus={e=>e.currentTarget.style.borderColor="var(--accent-cyan)"}
+                      onBlur={e=>e.currentTarget.style.borderColor="var(--border-main)"}
+                    />
+                    {ledgerSearch && <button onClick={()=>setLedgerSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-60%)", background:"none", border:"none", cursor:"pointer", fontSize:12, color:"var(--text-muted)", padding:0 }}>✕</button>}
+                  </div>
+                </div>
+                <div style={{ flex:1, overflowY:"auto" }}>
+                  <MasteryLedger ledger={masteryLedger} search={ledgerSearch} />
+                </div>
+              </div>
+            )}
+
+            <MobileTabBar active={mobileTab} onChange={setMobileTab} />
+          </div>
+          )}
         </div>
       </div>
     </>
