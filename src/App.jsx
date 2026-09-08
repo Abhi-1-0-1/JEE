@@ -323,7 +323,7 @@ const JEE_SYLLABUS = {
     "Class 12": ["Solid State","Solutions","Electrochemistry","Chemical Kinetics","Surface Chemistry","d & f Block Elements","Coordination Compounds","Haloalkanes & Haloarenes","Alcohols Phenols Ethers","Aldehydes Ketones","Carboxylic Acids","Amines","Biomolecules","Polymers","Chemistry in Everyday Life"],
   },
   Mathematics: {
-    "Class 11": ["Sets","Trigonometry","Complex Numbers","Quadratic Equations","Sequences & Series","Straight Lines","Circles", "Parabola", "Hyperbola","Permutations & Combinations","Binomial Theorem","Statistics","Probability (11)"],
+    "Class 11": ["Sets","Trigonometry","Complex Numbers","Quadratic Equations","Sequences & Series","Straight Lines","Circles", "Ellipse","Parabola", "Hyperbola","Permutations & Combinations","Binomial Theorem","Statistics","Probability (11)"],
     "Class 12": ["Relations & Functions","Inverse Trigonometry","Matrices & Determinants", "Limits", "Continuity", "Differentiability", "Methods Of Differentiation", "Applications of Derivatives","Integrals","Applications of Integrals","Differential Equations","Vectors","3D Geometry","Linear Programming","Probability (12)"],
   },
 };
