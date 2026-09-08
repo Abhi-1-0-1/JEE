@@ -130,9 +130,6 @@ const GLOBAL_CSS = `
 
   .tab-bar-btn { transition: color 0.15s, transform 0.12s; }
   .tab-bar-btn:active { transform: scale(0.92); }
-
-  .app-shell { height: 100vh; }
-  @supports (height: 100dvh) { .app-shell { height: 100dvh; } }
 `;
 
 function InjectStyles() {
@@ -1972,33 +1969,6 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMob
   );
 }
 
-// ─── MOBILE TAB BAR ────────────────────────────────────────────────────────────
-
-const MOBILE_TABS = [
-  { key:"syllabus", label:"Syllabus", icon:"📚" },
-  { key:"calendar", label:"Today",    icon:"▦" },
-  { key:"notepad",  label:"Notepad",  icon:"✎" },
-  { key:"ledger",   label:"Ledger",   icon:"✓" },
-];
-
-function MobileTabBar({ active, onChange }) {
-  return (
-    <nav className="safe-bottom" style={{ flexShrink:0, display:"flex", alignItems:"stretch", background:"var(--bg-surface)", borderTop:"1px solid var(--border-main)", zIndex:10 }}>
-      {MOBILE_TABS.map(tab => {
-        const isActive = active === tab.key;
-        return (
-          <button key={tab.key} onClick={() => onChange(tab.key)} className="tab-bar-btn press-scale"
-            style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, padding:"8px 4px 6px", background:"transparent", border:"none", cursor:"pointer", color: isActive ? "var(--accent-cyan)" : "var(--text-muted)", fontFamily:"'JetBrains Mono', monospace" }}
-          >
-            <span style={{ fontSize:17, lineHeight:1 }}>{tab.icon}</span>
-            <span style={{ fontSize:9, letterSpacing:"0.06em" }}>{tab.label}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
 // ─── ROOT APP ──────────────────────────────────────────────────────────────────
 
 const NOTEPAD_DEFAULT_HEIGHT = 320;
@@ -2049,24 +2019,6 @@ export default function App() {
   const saveTimer = useRef(null);
 
   const moveActive = useCallback((step) => setActiveDate(d => shiftDateStr(d, step)), []);
-
-  const touchStartXRef = useRef(null);
-  const touchStartYRef = useRef(null);
-  const handleDayTouchStart = useCallback((e) => {
-    const t = e.touches[0];
-    touchStartXRef.current = t.clientX;
-    touchStartYRef.current = t.clientY;
-  }, []);
-  const handleDayTouchEnd = useCallback((e) => {
-    if (touchStartXRef.current == null) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touchStartXRef.current;
-    const dy = t.clientY - (touchStartYRef.current ?? t.clientY);
-    touchStartXRef.current = null;
-    touchStartYRef.current = null;
-    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return;
-    moveActive(dx < 0 ? 1 : -1);
-  }, [moveActive]);
 
   useEffect(() => {
     window.localStorage.setItem("jee-os-notepad-height", String(notepadHeight));
@@ -2329,49 +2281,42 @@ export default function App() {
   return (
     <>
       <InjectStyles />
-      <div className="app-shell" style={{ background:"var(--bg-base)", color:"var(--text-primary)", display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:"'JetBrains Mono', monospace", position:"relative" }}>
+      <div style={{ height:"100vh", background:"var(--bg-base)", color:"var(--text-primary)", display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:"'JetBrains Mono', monospace", position:"relative" }}>
 
         {/* ── HEADER ── */}
-        <header className={isMobile ? "safe-top" : undefined} style={{ flexShrink:0, display:"flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 8 : 12, padding: isMobile ? "8px 10px" : "10px 16px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
-            {!isMobile && <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.2</span>}
+        <header style={{ flexShrink:0, display:"flex", alignItems:"center", gap:12, padding:"10px 16px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
+          <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
+          <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.3</span>
 
-            {!isMobile && <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />}
+          <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />
 
-            <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0, marginLeft: isMobile ? "auto" : 0 }}>
-              {saveStatus !== "idle" && (
-                <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, letterSpacing:"0.1em", color: saveStatus==="saving" ? "var(--accent-orange)" : "var(--accent-green)", padding:"0 2px", userSelect:"none" }}>
-                  <span style={{ width:6, height:6, borderRadius:"50%", background:"currentColor", flexShrink:0, animation: saveStatus==="saving" ? "pulse 1s ease-in-out infinite" : "none" }} />
-                  {isMobile ? null : (saveStatus==="saving" ? "SAVING…" : "SAVED")}
-                </span>
-              )}
-              {!isMobile && <span style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>🔥 {data.meta?.streakCount??0}d</span>}
-              {!isMobile && <span className={totalDoneBump ? "count-bump" : undefined} style={{ display:"inline-block", fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>✓ {totalDone}</span>}
-              {!isMobile && (
-                <button className="press-scale" onClick={() => setShowCalendar(true)} title="Full calendar (C)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
-                  onMouseEnter={e=>e.currentTarget.style.color="var(--accent-purple)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-                >▦ CAL</button>
-              )}
-              <button className="press-scale" onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding: isMobile ? "5px 9px" : "4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
-                onMouseEnter={e=>e.currentTarget.style.color="var(--accent-cyan)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-              >{isMobile ? "?" : "? HELP"}</button>
-              <button onClick={handleSwapFile} title="Switch data file" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding: isMobile ? "5px 9px" : "4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
-                onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-              >⚙</button>
-            </div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+            {saveStatus !== "idle" && (
+              <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, letterSpacing:"0.1em", color: saveStatus==="saving" ? "var(--accent-orange)" : "var(--accent-green)", padding:"0 2px", userSelect:"none" }}>
+                <span style={{ width:6, height:6, borderRadius:"50%", background:"currentColor", flexShrink:0, animation: saveStatus==="saving" ? "pulse 1s ease-in-out infinite" : "none" }} />
+                {saveStatus==="saving" ? "SAVING…" : "SAVED"}
+              </span>
+            )}
+            <span style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>🔥 {data.meta?.streakCount??0}d</span>
+            <span className={totalDoneBump ? "count-bump" : undefined} style={{ display:"inline-block", fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>✓ {totalDone}</span>
+            <button className="press-scale" onClick={() => setShowCalendar(true)} title="Full calendar (C)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+              onMouseEnter={e=>e.currentTarget.style.color="var(--accent-purple)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+            >▦ CAL</button>
+            <button className="press-scale" onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+              onMouseEnter={e=>e.currentTarget.style.color="var(--accent-cyan)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+            >? HELP</button>
+            <button onClick={handleSwapFile} title="Switch data file" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
+              onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+            >⚙</button>
           </div>
-
-          {isMobile && <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />}
         </header>
 
         {/* ── BODY ── */}
         <div style={{ position:"relative", flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
           <Toaster toasts={toasts} />
           <HelpPanel    open={showHelp}     onClose={() => setShowHelp(false)} />
-          <CalendarOverlay open={showCalendar} onClose={() => setShowCalendar(false)} data={data} activeDate={activeDate} setActiveDate={setActiveDate} isMobile={isMobile} />
+          <CalendarOverlay open={showCalendar} onClose={() => setShowCalendar(false)} data={data} activeDate={activeDate} setActiveDate={setActiveDate} />
 
-          {!isMobile && (
           <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
 
             {/* Syllabus tree — collapsible + resizable, unified smart search */}
@@ -2491,98 +2436,6 @@ export default function App() {
               </div>
             </aside>
           </div>
-          )}
-
-          {/* ── MOBILE SINGLE-PANE BODY ── */}
-          {isMobile && (
-          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-
-            {mobileTab === "syllabus" && (
-              <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", minWidth:0 }}>
-                <div style={{ flexShrink:0, borderBottom:"1px solid var(--border-sub)", position:"sticky", top:0, background:"var(--bg-base)", zIndex:2 }}>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px 6px", gap:8 }}>
-                    <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>SYLLABUS</span>
-                    <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:5, padding:"1px 7px", whiteSpace:"nowrap" }}>→ {fmtDateBig(activeDate)}</span>
-                  </div>
-                  <div style={{ padding:"0 10px 10px" }}>
-                    <SyllabusSearchBar onAddNote={addNote} onQueryChange={setSyllabusQuery} />
-                  </div>
-                </div>
-                {Object.entries(JEE_SYLLABUS).map(([subject, classes]) => (
-                  <SubjectTree key={subject} subject={subject} classes={classes} activeDate={activeDate} onAddTask={addTask} searchQ={syllabusQuery} isMobile />
-                ))}
-              </div>
-            )}
-
-            {mobileTab === "calendar" && (
-              <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-                <div style={{ flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", gap:6, padding:"8px 10px", borderBottom:"1px solid var(--border-sub)" }}>
-                  <button onClick={()=>moveActive(-1)} className="press-scale" style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, color:"var(--text-sec)", fontSize:14, padding:"6px 12px", cursor:"pointer" }}>‹</button>
-                  <button onClick={()=>setShowCalendar(true)} className="press-scale" style={{ flex:1, background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, color: activeDate===today ? "var(--accent-orange)" : "var(--text-primary)", fontSize:12, fontWeight:600, padding:"7px 10px", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>
-                    {activeDate===today ? "TODAY · " : ""}{fmtDateBig(activeDate)}
-                  </button>
-                  <button onClick={()=>moveActive(1)} className="press-scale" style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, color:"var(--text-sec)", fontSize:14, padding:"6px 12px", cursor:"pointer" }}>›</button>
-                </div>
-                <div style={{ flex:1, overflow:"hidden", display:"flex" }} onTouchStart={handleDayTouchStart} onTouchEnd={handleDayTouchEnd}>
-                  <DayColumn date={activeDate} tasks={data.days[activeDate]?.tasks??[]}
-                    isToday={activeDate===today} isActive
-                    onClick={()=>{}}
-                    onToggle={tid => toggleTask(activeDate,tid)}
-                    onRemove={tid => removeTask(activeDate,tid)}
-                    onEditNote={(tid, note) => editTaskNote(activeDate, tid, note)}
-                    onDropTile={payload => handleTileDrop(activeDate, payload)}
-                    onMoveTask={(taskId, fromDate, toDate, toIndex) => moveTask(taskId, fromDate, toDate, toIndex)}
-                    onTaskToNotepad={moveTaskToNotepad}
-                    isMobile
-                  />
-                </div>
-              </div>
-            )}
-
-            {mobileTab === "notepad" && (
-              <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-                <NotepadPanel
-                  notes={data.notes ?? []}
-                  height={notepadHeight}
-                  resizing={false}
-                  onAddNote={addNote}
-                  onToggleNote={toggleNote}
-                  onDeleteNote={deleteNote}
-                  onEditNote={editNoteText}
-                  onClearDone={clearDoneNotes}
-                  onTaskDrop={moveTaskToNotepad}
-                  isMobile
-                  onScheduleRelative={scheduleNoteRelative}
-                />
-              </div>
-            )}
-
-            {mobileTab === "ledger" && (
-              <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-                <div style={{ padding:"10px 14px 8px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
-                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-                    <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>MASTERY LEDGER</span>
-                    <span style={{ fontSize:10, color:"var(--accent-green)", background:"#3DFC9A15", border:"1px solid #3DFC9A25", borderRadius:5, padding:"1px 7px" }}>{totalDone} logged</span>
-                  </div>
-                  <div style={{ position:"relative" }}>
-                    <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-60%)", fontSize:12, color:"var(--text-muted)", pointerEvents:"none" }}>🔍</span>
-                    <input value={ledgerSearch} onChange={e=>setLedgerSearch(e.target.value)} placeholder="Search ledger..."
-                      style={{ width:"100%", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, padding:"7px 26px 7px 28px", fontSize:16, color:"var(--text-primary)", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:"var(--accent-cyan)" }}
-                      onFocus={e=>e.currentTarget.style.borderColor="var(--accent-cyan)"}
-                      onBlur={e=>e.currentTarget.style.borderColor="var(--border-main)"}
-                    />
-                    {ledgerSearch && <button onClick={()=>setLedgerSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-60%)", background:"none", border:"none", cursor:"pointer", fontSize:12, color:"var(--text-muted)", padding:0 }}>✕</button>}
-                  </div>
-                </div>
-                <div style={{ flex:1, overflowY:"auto" }}>
-                  <MasteryLedger ledger={masteryLedger} search={ledgerSearch} />
-                </div>
-              </div>
-            )}
-
-            <MobileTabBar active={mobileTab} onChange={setMobileTab} />
-          </div>
-          )}
         </div>
       </div>
     </>
