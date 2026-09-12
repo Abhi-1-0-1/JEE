@@ -544,36 +544,45 @@ const fmtYear    = (iso) => iso.slice(0, 4);
 
 // ─── FILE SYSTEM ACCESS ────────────────────────────────────────────────────────
 
-const fsaSupported = () => typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
+const STORAGE_KEY = "jee-study-os:data:v1";
 
-async function openFilePicker() {
-  const [fh] = await window.showOpenFilePicker({ types:[{ description:"JSON Data File", accept:{"application/json":[".json"]} }] });
-  return fh;
+function storageSupported() {
+  if (typeof window === "undefined" || !window.localStorage) return false;
+  try {
+    const testKey = "jee-study-os:storage-test";
+    window.localStorage.setItem(testKey, "1");
+    window.localStorage.removeItem(testKey);
+    return true;
+  } catch {
+    return false;
+  }
 }
-async function saveFilePicker() {
-  return window.showSaveFilePicker({ suggestedName:"jee-study-data.json", types:[{ description:"JSON Data File", accept:{"application/json":[".json"]} }] });
+
+function loadStoredData() {
+  if (!storageSupported()) return normalizeData(DEFAULT_DATA());
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    return raw ? normalizeData(JSON.parse(raw)) : normalizeData(DEFAULT_DATA());
+  } catch {
+    return normalizeData(DEFAULT_DATA());
+  }
 }
-async function readFH(fh) {
-  const text = await (await fh.getFile()).text();
-  try { return normalizeData(JSON.parse(text)); } catch { return null; }
-}
-async function writeFH(fh, data) {
-  const w = await fh.createWritable();
-  await w.write(JSON.stringify(data, null, 2));
-  await w.close();
+
+function saveStoredData(data) {
+  if (!storageSupported()) throw new Error("Browser storage is unavailable.");
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
 // ─── SETUP SCREEN ──────────────────────────────────────────────────────────────
 
 function SetupScreen({ onReady }) {
   const [error, setError] = useState("");
-  const handleOpen = async () => {
-    try { const fh = await openFilePicker(); onReady(fh, (await readFH(fh)) ?? normalizeData(DEFAULT_DATA())); }
-    catch (e) { if (e.name !== "AbortError") setError(e.message); }
-  };
-  const handleCreate = async () => {
-    try { const fh = await saveFilePicker(); const fresh = normalizeData(DEFAULT_DATA()); await writeFH(fh, fresh); onReady(fh, fresh); }
-    catch (e) { if (e.name !== "AbortError") setError(e.message); }
+  const handleStart = () => {
+    if (!storageSupported()) {
+      setError("Browser storage is blocked. Enable site data/storage for this site.");
+      return;
+    }
+    onReady(loadStoredData());
   };
   return (
     <div style={{ position:"relative", minHeight:"100vh", background:"var(--bg-base)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"2.5rem", fontFamily:"'JetBrains Mono', monospace", padding:"0 1.5rem", overflow:"hidden" }}>
@@ -596,25 +605,18 @@ function SetupScreen({ onReady }) {
 
       <p className="hero-sub" style={{ fontSize:14, color:"var(--text-sec)", marginTop:-28, textAlign:"center" }}>Zero-friction. Total control. All local.</p>
 
-      {fsaSupported() ? (
-        <div className="hero-cta" style={{ display:"flex", gap:12 }}>
-          <button className="hero-btn" onClick={handleOpen} style={{ padding:"12px 24px", fontSize:13, color:"var(--accent-cyan)", border:"1px solid var(--accent-cyan)", background:"var(--accent-cyan)12", borderRadius:10, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", boxShadow:"0 0 0 0 transparent" }}
-            onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px -8px #38D9F560"} onMouseLeave={e=>e.currentTarget.style.boxShadow="0 0 0 0 transparent"}
-          >📂 Open Data File</button>
-          <button className="hero-btn" onClick={handleCreate} style={{ padding:"12px 24px", fontSize:13, color:"var(--accent-purple)", border:"1px solid var(--accent-purple)", background:"var(--accent-purple)12", borderRadius:10, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", boxShadow:"0 0 0 0 transparent" }}
-            onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px -8px #B084FC60"} onMouseLeave={e=>e.currentTarget.style.boxShadow="0 0 0 0 transparent"}
-          >✨ Create New File</button>
-        </div>
-      ) : (
-        <div className="hero-cta" style={{ color:"var(--accent-red)", fontSize:13, textAlign:"center", maxWidth:380 }}>⚠ Browser does not support File System Access API.<br/>Use Chrome 86+ or Edge 86+.</div>
-      )}
+      <div className="hero-cta" style={{ display:"flex", gap:12 }}>
+        <button className="hero-btn" onClick={handleStart} style={{ padding:"12px 24px", fontSize:13, color:"var(--accent-cyan)", border:"1px solid var(--accent-cyan)", background:"var(--accent-cyan)12", borderRadius:10, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", boxShadow:"0 0 0 0 transparent" }}
+          onMouseEnter={e=>e.currentTarget.style.boxShadow="0 8px 28px -8px #38D9F560"} onMouseLeave={e=>e.currentTarget.style.boxShadow="0 0 0 0 transparent"}
+        >Open Planner</button>
+      </div>
       {error && <p style={{ color:"var(--accent-red)", fontSize:12, position:"relative" }}>{error}</p>}
-      <p className="hero-foot" style={{ fontSize:11, color:"var(--text-muted)", maxWidth:280, textAlign:"center", lineHeight:1.7 }}>All data stays on your machine — no accounts, no servers.</p>
+      <p className="hero-foot" style={{ fontSize:11, color:"var(--text-muted)", maxWidth:340, textAlign:"center", lineHeight:1.7 }}>All data stays in this browser profile - no JSON file, no accounts, no servers.</p>
     </div>
   );
 }
 
-// ─── COMMAND BAR ───────────────────────────────────────────────────────────────
+// COMMAND BAR
 
 function CommandBar({ activeDate, onAddTask, cmdRef }) {
   const [val,       setVal]       = useState("");
@@ -1980,8 +1982,7 @@ const SIDEBAR_MAX_WIDTH      = 480;
 const SIDEBAR_COLLAPSED_WIDTH = 44;
 
 export default function App() {
-  const [fileHandle,   setFileHandle]   = useState(null);
-  const [data,         setData]         = useState(null);
+  const [data,         setData]         = useState(() => loadStoredData());
   const [activeDate,   setActiveDate]   = useState(todayStr());
   const [showHelp,     setShowHelp]     = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -2047,18 +2048,19 @@ export default function App() {
   const resetSidebarWidth = useCallback(() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH), []);
 
   const schedSave = useCallback((nextData) => {
-    if (!fileHandle) return;
     clearTimeout(saveTimer.current);
     setSaveStatus("saving");
     saveTimer.current = setTimeout(() => {
-      writeFH(fileHandle, { ...nextData, meta:{ ...nextData.meta, lastModified:new Date().toISOString() } })
-        .then(() => {
-          setSaveStatus("saved");
-          setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 1800);
-        })
-        .catch(() => setSaveStatus("idle"));
+      try {
+        saveStoredData({ ...nextData, meta:{ ...nextData.meta, lastModified:new Date().toISOString() } });
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 1800);
+      } catch (e) {
+        console.error(e);
+        setSaveStatus("idle");
+      }
     }, 300);
-  }, [fileHandle]);
+  }, []);
 
   const patch = useCallback((updater) => {
     setData(prev => { const next = typeof updater==="function"?updater(prev):updater; schedSave(next); return next; });
@@ -2246,14 +2248,8 @@ export default function App() {
     handleTileDrop(date, { text:note.text, note:note.note });
   }, [handleTileDrop]);
 
-  const handleSwapFile = async () => {
-    try {
-      const fh = await openFilePicker();
-      setFileHandle(fh);
-      setData((await readFH(fh)) ?? normalizeData(DEFAULT_DATA()));
-      pushToast("Switched data file", { icon:"📂" });
-    }
-    catch (e) { if (e.name!=="AbortError") console.error(e); }
+  const handleStorageInfo = () => {
+    pushToast("Planner data is saved in this browser profile", { icon:"OK" });
   };
 
   const masteryLedger = useMemo(() => {
@@ -2274,7 +2270,7 @@ export default function App() {
   const totalDoneBump = useBump(totalDone);
   const visibleDays = useMemo(() => [-1,0,1].map(i=>shiftDateStr(activeDate,i)), [activeDate]);
 
-  if (!data) return (<><InjectStyles /><SetupScreen onReady={(fh,d)=>{ setFileHandle(fh); setData(normalizeData(d)); }} /></>);
+  if (!data) return (<><InjectStyles /><SetupScreen onReady={(d)=>setData(normalizeData(d))} /></>);
 
   const today = todayStr();
 
@@ -2305,7 +2301,7 @@ export default function App() {
             <button className="press-scale" onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
               onMouseEnter={e=>e.currentTarget.style.color="var(--accent-cyan)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
             >? HELP</button>
-            <button onClick={handleSwapFile} title="Switch data file" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
+            <button onClick={handleStorageInfo} title="Storage info" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
               onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
             >⚙</button>
           </div>
