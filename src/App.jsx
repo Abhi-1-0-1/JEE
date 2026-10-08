@@ -320,11 +320,11 @@ const JEE_SYLLABUS = {
   },
   Chemistry: {
     "Class 11": ["Basic Concepts", "Atomic Structure", "Periodicity","Chemical Bonding","Thermodynamics", "Chemical Equilibrium", "Ionic Equilibrium","Redox Reactions","General Organic Chemistry","Hydrocarbons"],
-    "Class 12": ["Solid State","Solutions","Electrochemistry","Chemical Kinetics","d & f Block Elements","Coordination Compounds","Haloalkanes & Haloarenes","Alcohols Phenols Ethers","Aldehydes Ketones","Carboxylic Acids","Amines","Biomolecules","Polymers","Chemistry in Everyday Life"],
+    "Class 12": ["Solid State","Solutions","Electrochemistry","Chemical Kinetics","d & f Block Elements","Coordination Compounds","Haloalkanes & Haloarenes","Alcohols Phenols Ethers","Aldehydes, Ketones And Carboxylic Acids","Amines","Biomolecules","Polymers","Chemistry in Everyday Life"],
   },
   Mathematics: {
     "Class 11": ["Sets","Trigonometry","Complex Numbers","Quadratic Equations","Sequences & Series","Straight Lines","Circles", "Ellipse","Parabola", "Hyperbola","Permutations & Combinations","Binomial Theorem","Statistics","Probability (11)"],
-    "Class 12": ["Relations & Functions","Inverse Trigonometry","Matrices & Determinants", "Limits", "Continuity", "Differentiability", "Methods Of Differentiation", "Applications of Derivatives","Integrals","Applications of Integrals","Differential Equations","Vectors","3D Geometry","Linear Programming","Probability (12)"],
+    "Class 12": ["Relations & Functions","Inverse Trigonometry","Matrices & Determinants", "Limits", "Continuity", "Differentiability", "Methods Of Differentiation", "Applications of Derivatives","Definite Integrals", "Indefinite Integrals", "Areas","Differential Equations","Vectors","3D Geometry","Linear Programming","Probability (12)"],
   },
 };
 
@@ -2282,7 +2282,7 @@ export default function App() {
         {/* ── HEADER ── */}
         <header style={{ flexShrink:0, display:"flex", alignItems:"center", gap:12, padding:"10px 16px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
           <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
-          <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.3</span>
+          <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.3.1</span>
 
           <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />
 
