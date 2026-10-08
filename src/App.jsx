@@ -319,8 +319,8 @@ const JEE_SYLLABUS = {
     "Class 12": ["Electrostatics","Capacitance", "Current Electricity","Moving Charges & Magnetism","Magnetism & Matter","Electromagnetic Induction","Alternating Current","Electromagnetic Waves","Ray Optics","Wave Optics","Dual Nature of Radiation","Atoms & Nuclei","Semiconductors"],
   },
   Chemistry: {
-    "Class 11": ["Basic Concepts", "Atomic Structure", "Chemical Bonding","Thermodynamics", "Equilibrium", "Redox Reactions", "s-Block Elements","p-Block Elements (11)","General Organic Chemistry","Hydrocarbons"],
-    "Class 12": ["Solid State","Solutions","Electrochemistry","Chemical Kinetics","Surface Chemistry","d & f Block Elements","Coordination Compounds","Haloalkanes & Haloarenes","Alcohols Phenols Ethers","Aldehydes Ketones","Carboxylic Acids","Amines","Biomolecules","Polymers","Chemistry in Everyday Life"],
+    "Class 11": ["Basic Concepts", "Atomic Structure", "Periodicity","Chemical Bonding","Thermodynamics", "Chemical Equilibrium", "Ionic Equilibrium","Redox Reactions","General Organic Chemistry","Hydrocarbons"],
+    "Class 12": ["Solid State","Solutions","Electrochemistry","Chemical Kinetics","d & f Block Elements","Coordination Compounds","Haloalkanes & Haloarenes","Alcohols Phenols Ethers","Aldehydes Ketones","Carboxylic Acids","Amines","Biomolecules","Polymers","Chemistry in Everyday Life"],
   },
   Mathematics: {
     "Class 11": ["Sets","Trigonometry","Complex Numbers","Quadratic Equations","Sequences & Series","Straight Lines","Circles", "Ellipse","Parabola", "Hyperbola","Permutations & Combinations","Binomial Theorem","Statistics","Probability (11)"],
