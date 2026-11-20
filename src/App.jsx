@@ -27,6 +27,7 @@ const GLOBAL_CSS = `
     --accent-purple:#C76EFF;
     --accent-orange:#FF9F43;
     --accent-red:   #FF6B6B;
+    --accent-test:  #FF7AC6;
   }
 
   body { background: var(--bg-base); color: var(--text-primary); font-family: 'JetBrains Mono', monospace; margin: 0; }
@@ -68,7 +69,7 @@ const GLOBAL_CSS = `
 
   .day-col-drop-active { outline: 2px dashed var(--accent-cyan) !important; outline-offset: -2px; }
 
-  .task-drop-indicator { height:3px; border-radius:99; background:var(--accent-cyan); margin:2px 2px 8px; box-shadow:0 0 8px 1px #38D9F580; animation: fadeIn 0.1s ease forwards; }
+  .task-drop-indicator { height:3px; border-radius:99px; background:var(--accent-cyan); margin:2px 2px 8px; box-shadow:0 0 8px 1px #38D9F580; animation: fadeIn 0.1s ease forwards; }
 
   .task-card-draggable { cursor: grab; }
   .task-card-draggable:active { cursor: grabbing; }
@@ -130,6 +131,9 @@ const GLOBAL_CSS = `
 
   .tab-bar-btn { transition: color 0.15s, transform 0.12s; }
   .tab-bar-btn:active { transform: scale(0.92); }
+
+  .test-chip:hover { border-color: #FF7AC680 !important; }
+  .test-tooltip { animation: fadeIn 0.12s ease forwards; pointer-events: none; }
 `;
 
 function InjectStyles() {
@@ -231,8 +235,8 @@ function Toaster({ toasts }) {
 }
 
 // ─── RESIZE HANDLE ─────────────────────────────────────────────────────────────
-// Generic vertical drag-to-resize divider. Drag to resize, double-click to
-// reset to the default size. Used between the Notepad and Mastery Ledger.
+// Generic drag-to-resize divider. Drag to resize, double-click to reset to the
+// default size.
 
 function ResizeHandle({ axis = "y", onResizeDelta, onReset, onResizeStart, onResizeEnd }) {
   const draggingRef = useRef(false);
@@ -315,25 +319,30 @@ const S = {
 
 const JEE_SYLLABUS = {
   Physics: {
-    "Class 11": ["Units & Measurements","Kinematics","Laws of Motion","Work Energy & Power","Rotational Mechanics","Gravitation","Fluid Mechanics", "Solids", "Kinetic Theory of Gases", "Thermodynamics","Oscillations","Waves"],
-    "Class 12": ["Electrostatics","Capacitance", "Current Electricity","Moving Charges & Magnetism","Magnetism & Matter","Electromagnetic Induction","Alternating Current","Electromagnetic Waves","Ray Optics","Wave Optics","Dual Nature of Radiation","Atoms & Nuclei","Semiconductors"],
+    "Class 11": ["Units & Measurements","Kinematics","Laws of Motion","Work Energy & Power","Rotational Mechanics","Gravitation","Fluid Mechanics","Solids","Kinetic Theory of Gases","Thermodynamics","Oscillations","Waves"],
+    "Class 12": ["Electrostatics","Capacitance","Current Electricity","Moving Charges & Magnetism","Magnetism & Matter","Electromagnetic Induction","Alternating Current","Electromagnetic Waves","Ray Optics","Wave Optics","Dual Nature of Radiation","Atoms & Nuclei","Semiconductors"],
   },
   Chemistry: {
-    "Class 11": ["Basic Concepts", "Atomic Structure", "Periodicity","Chemical Bonding","Thermodynamics", "Chemical Equilibrium", "Ionic Equilibrium","Redox Reactions","General Organic Chemistry","Hydrocarbons"],
-    "Class 12": ["Solid State","Solutions","Electrochemistry","Chemical Kinetics","d & f Block Elements","Coordination Compounds","Haloalkanes & Haloarenes","Alcohols Phenols Ethers","Aldehydes, Ketones And Carboxylic Acids","Amines","Biomolecules","Polymers","Chemistry in Everyday Life"],
+    "Class 11": ["Basic Concepts","Atomic Structure","Periodicity","Chemical Bonding","Thermodynamics","Chemical Equilibrium","Ionic Equilibrium","Redox Reactions","General Organic Chemistry","Hydrocarbons"],
+    "Class 12": ["Solid State","Solutions","Electrochemistry","Chemical Kinetics","p Block Elements", "d & f Block Elements","Coordination Compounds","Haloalkanes & Haloarenes","Alcohols Phenols Ethers","Aldehydes, Ketones And Carboxylic Acids","Amines","Biomolecules","Chemistry in Everyday Life"],
   },
   Mathematics: {
-    "Class 11": ["Sets","Trigonometry","Complex Numbers","Quadratic Equations","Sequences & Series","Straight Lines","Circles", "Ellipse","Parabola", "Hyperbola","Permutations & Combinations","Binomial Theorem","Statistics","Probability (11)"],
-    "Class 12": ["Relations & Functions","Inverse Trigonometry","Matrices & Determinants", "Limits", "Continuity", "Differentiability", "Methods Of Differentiation", "Applications of Derivatives","Definite Integrals", "Indefinite Integrals", "Areas","Differential Equations","Vectors","3D Geometry","Linear Programming","Probability (12)"],
+    "Class 11": ["Sets","Trigonometry","Complex Numbers","Quadratic Equations","Sequences & Series","Straight Lines","Circles","Ellipse","Parabola","Hyperbola","Permutations & Combinations","Binomial Theorem","Statistics"],
+    "Class 12": ["Relations & Functions","Inverse Trigonometry","Matrices & Determinants","Limits","Continuity","Differentiability","Methods Of Differentiation","Applications of Derivatives","Definite Integrals","Indefinite Integrals","Areas","Differential Equations","Vectors","3D Geometry","Linear Programming","Probability"],
   },
 };
 
-// Flat list for matching
-const ALL_CHAPTERS = [];
-for (const [subject, classes] of Object.entries(JEE_SYLLABUS))
-  for (const chapters of Object.values(classes))
-    for (const ch of chapters)
-      ALL_CHAPTERS.push({ subject, chapter: ch });
+// Flat list for matching — derived once from the built-in JEE_SYLLABUS.
+function getAllChapters(syllabus) {
+  const out = [];
+  for (const [subject, classes] of Object.entries(syllabus))
+    for (const chapters of Object.values(classes))
+      for (const ch of chapters)
+        out.push({ subject, chapter: ch });
+  return out;
+}
+
+const ALL_CHAPTERS = getAllChapters(JEE_SYLLABUS);
 
 // ─── SMART FUZZY ENGINE ────────────────────────────────────────────────────────
 
@@ -503,13 +512,15 @@ function parseCommand(raw) {
 // ─── DEFAULTS & HELPERS ────────────────────────────────────────────────────────
 
 const DEFAULT_DATA = () => ({
-  meta: { version: "1.0.0", lastModified: new Date().toISOString(), streakCount: 0 },
+  meta: { version: "1.5.0", lastModified: new Date().toISOString(), streakCount: 0 },
   days: {},
   notes: [],
+  tests: [],
 });
 
 const uid = () => "t_" + Math.random().toString(36).slice(2, 9) + "_" + Date.now();
 const noteUid = () => "n_" + Math.random().toString(36).slice(2, 9) + "_" + Date.now();
+const testUid = () => "x_" + Math.random().toString(36).slice(2, 9) + "_" + Date.now();
 
 const normalizeData = (raw) => {
   const source = raw && typeof raw === "object" ? raw : {};
@@ -522,8 +533,20 @@ const normalizeData = (raw) => {
           text: String(note.text ?? "").trim(),
           note: String(note.note ?? "").trim(),
           done: Boolean(note.done),
+          testId: note.testId ?? null,
           createdAt: note.createdAt ?? new Date().toISOString(),
         })).filter((note) => note.text.length > 0)
+      : [],
+    tests: Array.isArray(source.tests)
+      ? source.tests.map((t) => ({
+          id: t.id ?? testUid(),
+          title: String(t.title ?? "").trim(),
+          date: t.date ?? todayStr(),
+          syllabus: Array.isArray(t.syllabus)
+            ? t.syllabus.map((s) => ({ subject: s.subject ?? "Physics", chapter: String(s.chapter ?? "").trim(), note: String(s.note ?? "").trim() })).filter((s) => s.chapter.length > 0)
+            : [],
+          createdAt: t.createdAt ?? new Date().toISOString(),
+        })).filter((t) => t.title.length > 0)
       : [],
   };
 };
@@ -858,13 +881,15 @@ function CommandBar({ activeDate, onAddTask, cmdRef }) {
   );
 }
 
-// ─── SYLLABUS SEARCH BAR (unified) ─────────────────────────────────────────────
-// Same smart-input language as the Notepad and Command Bar: "phy waves /verma"
-// — chapter fuzzy-matched, "/note" carried as optional detail. Enter adds it to
-// the active day; dragging a suggestion (or any tree row) drops it straight
-// into the Notepad or onto a calendar day, note and all.
+// ─── SMART SEARCH INPUT (unified) ──────────────────────────────────────────────
+// One input language everywhere: "[subject] chapter [/note]" — the same smart
+// fuzzy engine as the Command Bar. Tab autocompletes, ↑/↓ navigate, Enter
+// commits the highlighted match, or the raw text as a custom chapter when
+// nothing matches. onCommit receives { subject, chapter, note, matched } and
+// may return a toast message. Used by the syllabus sidebar and the test
+// syllabus builder.
 
-function SyllabusSearchBar({ onAddNote, onQueryChange }) {
+function SmartSearchInput({ placeholder, accent = "#38D9F5", onCommit, onQueryChange, draggable = false, footerHint = "↵ ADD" }) {
   const [val,     setVal]     = useState("");
   const [selIdx,  setSelIdx]  = useState(0);
   const [focused, setFocused] = useState(false);
@@ -876,13 +901,14 @@ function SyllabusSearchBar({ onAddNote, onQueryChange }) {
 
   const showToast = (msg) => { setToast(msg); clearTimeout(toastRef.current); toastRef.current = setTimeout(() => setToast(null), 1700); };
 
-  // Enter / click here queues the chapter into the Notepad shortlist — it
-  // does NOT schedule it onto a day. To put something on a specific day,
-  // drag it (from here, or from the Notepad) onto that day's column.
-  const commit = (p) => {
-    if (!p) return;
-    onAddNote(p.chapter, p.note ?? "");
-    showToast(`✓ ${p.chapter} → Notepad`);
+  const commit = (entry) => {
+    if (!parsed) return;
+    const result = entry
+      ? { subject: entry.subject, chapter: entry.chapter, note: parsed.note ?? "", matched: true }
+      : { subject: parsed.subjectFilter ?? parsed.subject, chapter: parsed.chapterQuery, note: parsed.note ?? "", matched: false };
+    if (!result.chapter) return;
+    const msg = onCommit?.(result);
+    if (msg) showToast(msg);
     setVal(""); setSelIdx(0);
   };
 
@@ -902,40 +928,39 @@ function SyllabusSearchBar({ onAddNote, onQueryChange }) {
       if (e.key === "ArrowUp")   { e.preventDefault(); setSelIdx(i => Math.max(i-1, 0)); return; }
     }
     if (e.key === "Tab")     { handleTab(e); return; }
-    if (e.key === "Escape")  { setVal(""); e.currentTarget.blur(); return; }
+    if (e.key === "Escape")  { e.stopPropagation(); setVal(""); e.currentTarget.blur(); return; }
     if (e.key !== "Enter" || !val.trim()) return;
     e.preventDefault();
-    if (parsed?.ranked?.length) commit({ ...parsed, subject: parsed.ranked[selIdx]?.subject ?? parsed.subject, chapter: parsed.ranked[selIdx]?.chapter ?? parsed.chapter });
-    else commit(parsed);
+    commit(parsed?.ranked?.length ? (parsed.ranked[selIdx] ?? parsed.ranked[0]) : null);
   };
 
-  const pickSuggestion = (entry) => commit({ ...parsed, subject: entry.subject, chapter: entry.chapter });
-
   const cfg = parsed ? (S[parsed.subject] ?? S.Physics) : null;
-  const showDropdown = focused && parsed && val.trim().length >= 1 && parsed.ranked.length > 0;
+  const showDropdown = focused && parsed && val.trim().length >= 1;
+  const showCustomRow = showDropdown && !parsed.ranked.length && Boolean(parsed.chapterQuery);
+  const customCfg = parsed?.subjectFilter ? (S[parsed.subjectFilter] ?? S.Physics) : null;
 
   return (
     <div style={{ position:"relative" }}>
       <div style={{
         display:"flex", alignItems:"center", gap:6, background:"var(--bg-elevated)",
-        border:`1px solid ${focused ? (cfg?.accentBorder ?? "var(--accent-cyan)") : "var(--border-main)"}`,
+        border:`1px solid ${focused ? (cfg?.accentBorder ?? accent) : "var(--border-main)"}`,
         borderRadius:8, padding:"6px 9px", transition:"border-color 0.15s, box-shadow 0.15s",
-        boxShadow: focused ? `0 0 0 2px ${cfg?.accent ?? "#38D9F5"}18` : "none",
+        boxShadow: focused ? `0 0 0 2px ${cfg?.accent ?? accent}18` : "none",
       }}>
         <span style={{ fontSize:12, color:"var(--text-muted)", flexShrink:0 }}>🔍</span>
         <input
           value={val}
-          onChange={e => setVal(e.target.value)}
+          onChange={e => { setVal(e.target.value); setSelIdx(0); }}
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setTimeout(() => setFocused(false), 150)}
-          placeholder="Search syllabus · phy waves /verma"
-          style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", fontSize:12, color:"var(--text-primary)", fontFamily:"'JetBrains Mono', monospace", caretColor:cfg?.accent ?? "var(--accent-cyan)" }}
+          placeholder={placeholder}
+          style={{ flex:1, minWidth:0, background:"transparent", border:"none", outline:"none", fontSize:12, color:"var(--text-primary)", fontFamily:"'JetBrains Mono', monospace", caretColor:cfg?.accent ?? accent }}
         />
         {val && <button onClick={() => setVal("")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"var(--text-muted)", padding:0, flexShrink:0 }}>✕</button>}
       </div>
 
-      {showDropdown && (
+      {showDropdown && (parsed.ranked.length > 0 || showCustomRow) && (
         <div className="cmd-dropdown" style={{ position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:100, background:"var(--bg-elevated)", border:`1px solid ${cfg?.accentBorder ?? "var(--border-main)"}`, borderRadius:10, overflow:"hidden", boxShadow:"0 12px 40px rgba(0,0,0,0.5)" }}>
           {parsed.ranked.map((entry, i) => {
             const ec = S[entry.subject];
@@ -943,26 +968,37 @@ function SyllabusSearchBar({ onAddNote, onQueryChange }) {
             return (
               <div
                 key={entry.chapter + entry.subject}
-                draggable
-                onDragStart={(e) => {
+                draggable={draggable}
+                onDragStart={draggable ? (e) => {
                   e.dataTransfer.effectAllowed = "copy";
                   e.dataTransfer.setData("application/x-jee-tile", JSON.stringify({ text:entry.chapter, note:parsed.note ?? "", subject:entry.subject }));
                   e.dataTransfer.setData("text/plain", entry.chapter);
-                }}
-                onClick={() => pickSuggestion(entry)}
+                } : undefined}
+                onClick={() => commit(entry)}
                 onMouseEnter={() => setSelIdx(i)}
-                style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:isHighlighted?"var(--bg-hover)":"transparent", cursor:"grab", borderBottom:i<parsed.ranked.length-1?"1px solid var(--border-sub)":"none", transition:"background 0.08s" }}
+                style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", background:isHighlighted?"var(--bg-hover)":"transparent", cursor:draggable?"grab":"pointer", borderBottom:i<parsed.ranked.length-1?"1px solid var(--border-sub)":"none", transition:"background 0.08s" }}
               >
-                <span style={{ fontSize:10, color:"var(--text-dim)", flexShrink:0 }}>⠿</span>
+                {draggable && <span style={{ fontSize:10, color:"var(--text-dim)", flexShrink:0 }}>⠿</span>}
                 <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:ec.accent, background:ec.accentBg, border:`1px solid ${ec.accentBorder}`, borderRadius:5, padding:"2px 6px", flexShrink:0 }}>{ec.label}</span>
                 <span style={{ flex:1, fontSize:12, color:isHighlighted?"var(--text-primary)":"var(--text-sec)" }}>{entry.chapter}</span>
                 {isHighlighted && <span style={{ fontSize:9, color:"var(--text-muted)" }}>↵</span>}
               </div>
             );
           })}
+          {showCustomRow && (
+            <div
+              onClick={() => commit(null)}
+              style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 12px", cursor:"pointer", background:"var(--bg-hover)" }}
+            >
+              {customCfg && <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:customCfg.accent, background:customCfg.accentBg, border:`1px solid ${customCfg.accentBorder}`, borderRadius:5, padding:"2px 6px", flexShrink:0 }}>{customCfg.label}</span>}
+              <span style={{ fontSize:11, color:"var(--accent-orange)", flexShrink:0 }}>+ CUSTOM</span>
+              <span style={{ flex:1, fontSize:12, color:"var(--text-primary)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{parsed.chapterQuery}</span>
+              <span style={{ fontSize:9, color:"var(--text-muted)", flexShrink:0 }}>↵</span>
+            </div>
+          )}
           <div style={{ padding:"5px 12px", borderTop:"1px solid var(--border-sub)", display:"flex", gap:6, alignItems:"center", background:"var(--bg-surface)" }}>
-            <span style={{ fontSize:8, color:"var(--text-muted)", letterSpacing:"0.12em", flexShrink:0 }}>DRAG TO SCHEDULE · ↵ QUEUES IT</span>
-            {parsed.note && <span style={{ fontSize:9, color:"var(--text-muted)" }}>/ {parsed.note}</span>}
+            <span style={{ fontSize:8, color:"var(--text-muted)", letterSpacing:"0.12em", flexShrink:0 }}>{footerHint}</span>
+            {parsed.note && <span style={{ fontSize:9, color:"var(--text-muted)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>/ {parsed.note}</span>}
           </div>
         </div>
       )}
@@ -973,6 +1009,21 @@ function SyllabusSearchBar({ onAddNote, onQueryChange }) {
         </div>
       )}
     </div>
+  );
+}
+
+// Syllabus sidebar search: Enter / click queues the chapter into the Notepad
+// shortlist — it does NOT schedule it onto a day. To put something on a
+// specific day, drag it (from here, or from the Notepad) onto that day's column.
+function SyllabusSearchBar({ onAddNote, onQueryChange }) {
+  return (
+    <SmartSearchInput
+      placeholder="Search syllabus · phy waves /verma"
+      draggable
+      footerHint="DRAG TO SCHEDULE · ↵ QUEUES IT"
+      onQueryChange={onQueryChange}
+      onCommit={({ chapter, note }) => { onAddNote(chapter, note); return `✓ ${chapter} → Notepad`; }}
+    />
   );
 }
 
@@ -1241,7 +1292,7 @@ function TaskCard({ task, onToggle, onRemove, onEditNote, draggable = true, dimm
 
 // ─── DAY COLUMN ────────────────────────────────────────────────────────────────
 
-function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove, onEditNote, onDropTile, onMoveTask, onTaskToNotepad, isMobile = false }) {
+function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove, onEditNote, onDropTile, onMoveTask, onTaskToNotepad, isMobile = false, tests = [], onOpenTest }) {
   const done = tasks.filter(t => t.completed).length;
   const pct  = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const isComplete = tasks.length > 0 && pct === 100;
@@ -1323,6 +1374,11 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
         onDragLeave={isMobile ? undefined : (e) => { if (isTaskDrag(e) && !e.currentTarget.contains(e.relatedTarget)) setDragOverIndex(null); }}
         style={{ flex:1, overflowY:"auto", padding:isMobile?"12px 14px":"12px 10px", WebkitOverflowScrolling:"touch" }}
       >
+        {tests.length > 0 && (
+          <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:10 }}>
+            {tests.map((t) => <TestChip key={t.id} test={t} onOpen={() => onOpenTest?.(t)} compact={isMobile} />)}
+          </div>
+        )}
         {tasks.length === 0 ? (
           <p style={{ fontSize:12, color:dragOverTile?"var(--accent-cyan)":"var(--text-dim)", textAlign:"center", marginTop:40, lineHeight:1.7, transition:"color 0.15s" }}>
             {dragOverTile ? <>↓ drop to schedule here</> : isMobile ? <>— no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>add from Syllabus or Notepad tab</span></>}</> : <>— no tasks —{isActive && <><br /><span style={{ fontSize:11, color:"var(--text-muted)" }}>hover a chapter → + · drag a tile in</span></>}</>}
@@ -1364,8 +1420,6 @@ function DayColumn({ date, tasks, isToday, isActive, onClick, onToggle, onRemove
     </div>
   );
 }
-
-// ─── MASTERY LEDGER ────────────────────────────────────────────────────────────
 
 // ─── NOTE ROW ──────────────────────────────────────────────────────────────────
 
@@ -1465,9 +1519,31 @@ function NoteRow({ note, dragging, onDragStart, onDragEnd, onToggle, onDelete, o
   );
 }
 
+// ─── TEST NOTE FOLDER ──────────────────────────────────────────────────────────
+// Collapsible group in the Notepad holding all to-do notes that came from one
+// test's syllabus, so they read as a folder instead of loose scattered notes.
+
+function TestNoteFolder({ title, date, notes, children }) {
+  const [open, setOpen] = useState(true);
+  const done = notes.filter(n => n.done).length;
+  const allDone = notes.length > 0 && done === notes.length;
+  return (
+    <div style={{ flexShrink:0, border:"1px solid #FF7AC640", borderRadius:12, background:"#FF7AC608", overflow:"hidden", opacity:allDone?0.75:1, transition:"opacity 0.15s" }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"8px 10px", background:"#FF7AC612", border:"none", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>
+        <span style={{ fontSize:11, flexShrink:0, lineHeight:1 }}>⏱</span>
+        <span style={{ flex:1, minWidth:0, textAlign:"left", fontSize:12, fontWeight:600, color:"var(--text-primary)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{title}</span>
+        {date && <span style={{ fontSize:9, color:"var(--text-muted)", flexShrink:0 }}>{fmtDateBig(date)}</span>}
+        <span style={{ fontSize:9, color:allDone?"var(--accent-green)":"#FF7AC6", background:"#FF7AC61A", border:"1px solid #FF7AC640", borderRadius:99, padding:"1px 6px", flexShrink:0 }}>{done}/{notes.length}</span>
+        <span style={{ fontSize:9, color:"var(--text-muted)", flexShrink:0 }}>{open?"▾":"▸"}</span>
+      </button>
+      {open && <div style={{ display:"flex", flexDirection:"column", gap:8, padding:8 }}>{children}</div>}
+    </div>
+  );
+}
+
 // ─── NOTEPAD ───────────────────────────────────────────────────────────────────
 
-function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDeleteNote, onEditNote, onClearDone, onTaskDrop, isMobile = false, onScheduleRelative }) {
+function NotepadPanel({ notes, tests = [], onAddNote, onToggleNote, onDeleteNote, onEditNote, onClearDone, onTaskDrop, isMobile = false, onScheduleRelative }) {
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverTile, setDragOverTile] = useState(false);
   const dragCounterTile = useRef(0);
@@ -1476,6 +1552,22 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
     if (a.done !== b.done) return Number(a.done) - Number(b.done);
     return String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""));
   });
+
+  const looseNotes = sortedNotes.filter(n => !n.testId);
+  const testGroups = (() => {
+    const byId = new Map();
+    for (const n of sortedNotes) {
+      if (!n.testId) continue;
+      if (!byId.has(n.testId)) byId.set(n.testId, []);
+      byId.get(n.testId).push(n);
+    }
+    const groups = [];
+    for (const t of tests) {
+      if (byId.has(t.id)) { groups.push({ testId:t.id, title:t.title, date:t.date, notes:byId.get(t.id) }); byId.delete(t.id); }
+    }
+    for (const [id, groupNotes] of byId) groups.push({ testId:id, title:"Test syllabus", date:null, notes:groupNotes });
+    return groups;
+  })();
 
   const pendingCount = notes.filter((note) => !note.done).length;
   const doneCount = notes.length - pendingCount;
@@ -1500,6 +1592,26 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
     try { const tile = JSON.parse(raw); const text = String(tile?.text ?? "").trim(); if (text) onAddNote(text, tile?.note ?? ""); } catch { /* ignore malformed payload */ }
   };
 
+  const renderNote = (note) => (
+    <NoteRow
+      key={note.id}
+      note={note}
+      dragging={draggingId === note.id}
+      isMobile={isMobile}
+      onToggle={() => onToggleNote(note.id)}
+      onDelete={() => onDeleteNote(note.id)}
+      onEditNote={(newNote) => onEditNote(note.id, newNote)}
+      onScheduleRelative={(offset) => onScheduleRelative?.(note, offset)}
+      onDragStart={isMobile ? undefined : (e) => {
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.setData("application/x-jee-tile", JSON.stringify({ text: note.text, note: note.note }));
+        e.dataTransfer.setData("text/plain", note.note ? `${note.text} — ${note.note}` : note.text);
+        setDraggingId(note.id);
+      }}
+      onDragEnd={isMobile ? undefined : () => setDraggingId(null)}
+    />
+  );
+
   return (
     <section
       onDragOver={isMobile ? undefined : handleDragOver}
@@ -1507,7 +1619,7 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
       onDragLeave={isMobile ? undefined : handleDragLeave}
       onDrop={isMobile ? undefined : handleDrop}
       className={dragOverTile ? "day-col-drop-active" : undefined}
-      style={{ height:isMobile?"100%":height, flexShrink:0, display:"flex", flexDirection:"column", borderBottom:isMobile?"none":"1px solid var(--border-sub)", background:dragOverTile?"#38D9F510":"linear-gradient(180deg, rgba(13,19,32,0.98), rgba(8,12,20,0.98))", transition: resizing ? "background 0.15s" : "height 0.22s cubic-bezier(0.34,1.2,0.64,1), background 0.15s", overflow:"hidden" }}>
+      style={{ flex:1, minHeight:0, display:"flex", flexDirection:"column", background:dragOverTile?"#38D9F510":"linear-gradient(180deg, rgba(13,19,32,0.98), rgba(8,12,20,0.98))", transition:"background 0.15s", overflow:"hidden" }}>
       <div style={{ padding:isMobile?"14px 16px 12px":"12px 14px 10px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
           <div>
@@ -1541,122 +1653,18 @@ function NotepadPanel({ notes, height, resizing, onAddNote, onToggleNote, onDele
           <div style={{ padding:"16px 8px", border:`1px dashed ${dragOverTile?"var(--accent-cyan)":"var(--border-sub)"}`, borderRadius:12, textAlign:"center", color:dragOverTile?"var(--accent-cyan)":"var(--text-dim)", fontSize:12, lineHeight:1.7, transition:"color 0.15s, border-color 0.15s" }}>
             {dragOverTile ? "↓ drop to add as a note" : isMobile ? "Head to the Syllabus tab and tap + on a chapter to queue it here." : "Drag a chapter from the syllabus, or a task off the calendar, in here."}
           </div>
-        ) : sortedNotes.map((note) => (
-          <NoteRow
-            key={note.id}
-            note={note}
-            dragging={draggingId === note.id}
-            isMobile={isMobile}
-            onToggle={() => onToggleNote(note.id)}
-            onDelete={() => onDeleteNote(note.id)}
-            onEditNote={(newNote) => onEditNote(note.id, newNote)}
-            onScheduleRelative={(offset) => onScheduleRelative?.(note, offset)}
-            onDragStart={isMobile ? undefined : (e) => {
-              e.dataTransfer.effectAllowed = "copy";
-              e.dataTransfer.setData("application/x-jee-tile", JSON.stringify({ text: note.text, note: note.note }));
-              e.dataTransfer.setData("text/plain", note.note ? `${note.text} — ${note.note}` : note.text);
-              setDraggingId(note.id);
-            }}
-            onDragEnd={isMobile ? undefined : () => setDraggingId(null)}
-          />
-        ))}
+        ) : (
+          <>
+            {testGroups.map(g => (
+              <TestNoteFolder key={g.testId} title={g.title} date={g.date} notes={g.notes}>
+                {g.notes.map(renderNote)}
+              </TestNoteFolder>
+            ))}
+            {looseNotes.map(renderNote)}
+          </>
+        )}
       </div>
     </section>
-  );
-}
-
-function highlightMatch(text, query) {
-  const str = String(text ?? "");
-  if (!query) return str;
-  const idx = str.toLowerCase().indexOf(query.toLowerCase());
-  if (idx === -1) return str;
-  return (
-    <>
-      {str.slice(0, idx)}
-      <mark style={{ background:"#38D9F535", color:"var(--accent-cyan)", borderRadius:3, padding:"0 1px" }}>{str.slice(idx, idx + query.length)}</mark>
-      {str.slice(idx + query.length)}
-    </>
-  );
-}
-
-function MasteryLedger({ ledger, search = "" }) {
-  const [open, setOpen] = useState({});
-  const q = search.trim().toLowerCase();
-  const subjects = Object.keys(ledger);
-
-  // NOTE: this useMemo must run on every render, even when `subjects` is
-  // empty — hooks can never sit behind a conditional early return, or the
-  // hook count changes between renders and React crashes the whole tree.
-  const filtered = useMemo(() => {
-    if (!q) return ledger;
-    const out = {};
-    for (const [subject, chapters] of Object.entries(ledger)) {
-      const subjectHit = subject.toLowerCase().includes(q);
-      const keptChapters = {};
-      for (const [ch, entries] of Object.entries(chapters)) {
-        const chapterHit = ch.toLowerCase().includes(q);
-        const keptEntries = (subjectHit || chapterHit) ? entries : entries.filter(e => (e.note || "").toLowerCase().includes(q));
-        if (keptEntries.length) keptChapters[ch] = keptEntries;
-      }
-      if (Object.keys(keptChapters).length) out[subject] = keptChapters;
-    }
-    return out;
-  }, [ledger, q]);
-
-  if (!subjects.length) return <p style={{ fontSize:12, color:"var(--text-muted)", textAlign:"center", marginTop:60, lineHeight:1.8, padding:"0 16px" }}>Complete tasks to build<br />your mastery log.</p>;
-
-  const filteredSubjects = Object.keys(filtered);
-
-  if (q && !filteredSubjects.length) {
-    return <p style={{ fontSize:12, color:"var(--text-muted)", textAlign:"center", marginTop:60, lineHeight:1.8, padding:"0 16px" }}>No matches for “{search.trim()}”.</p>;
-  }
-
-  return (
-    <div>
-      {filteredSubjects.map(subject => {
-        const cfg     = S[subject] ?? S.Physics;
-        const chapters = filtered[subject];
-        const total   = Object.values(chapters).reduce((s,a) => s+a.length, 0);
-        const sOpen   = q ? true : open[subject] !== false;
-        return (
-          <div key={subject} style={{ borderBottom:"1px solid var(--border-sub)" }}>
-            <button onClick={() => setOpen(o => ({ ...o, [subject]:!sOpen }))}
-              style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"10px 14px", background:"var(--bg-elevated)", border:"none", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}
-              onMouseEnter={e => e.currentTarget.style.background="var(--bg-hover)"}
-              onMouseLeave={e => e.currentTarget.style.background="var(--bg-elevated)"}
-            >
-              <span style={{ color:cfg.accent, background:cfg.accentBg, border:`1px solid ${cfg.accentBorder}`, fontSize:9, fontWeight:700, letterSpacing:"0.18em", borderRadius:5, padding:"2px 6px" }}>{cfg.label}</span>
-              <span style={{ flex:1, textAlign:"left", fontSize:13, color:"var(--text-primary)", fontWeight:500 }}>{highlightMatch(subject, search.trim())}</span>
-              <span style={{ fontSize:11, color:"var(--accent-green)", background:"#3DFC9A15", borderRadius:99, padding:"1px 8px" }}>{total}</span>
-              <span style={{ fontSize:9, color:"var(--text-muted)", marginLeft:4 }}>{sOpen?"▾":"▸"}</span>
-            </button>
-            {sOpen && Object.entries(chapters).map(([ch, entries]) => {
-              const ck    = `${subject}|${ch}`;
-              const cOpen = q ? true : open[ck] !== false;
-              return (
-                <div key={ch}>
-                  <button onClick={() => setOpen(o => ({ ...o, [ck]:!cOpen }))}
-                    style={{ width:"100%", display:"flex", alignItems:"center", gap:8, padding:"6px 14px 6px 24px", background:"transparent", border:"none", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}
-                    onMouseEnter={e => e.currentTarget.style.background="var(--bg-hover)"}
-                    onMouseLeave={e => e.currentTarget.style.background="transparent"}
-                  >
-                    <span style={{ flex:1, textAlign:"left", fontSize:12, color:"var(--text-sec)" }}>{highlightMatch(ch, search.trim())}</span>
-                    <span style={{ fontSize:10, color:"var(--text-muted)" }}>{entries.length}×</span>
-                    <span style={{ fontSize:8, color:"var(--text-muted)", marginLeft:4 }}>{cOpen?"▾":"▸"}</span>
-                  </button>
-                  {cOpen && entries.map((entry, i) => (
-                    <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", padding:"3px 14px 3px 32px" }}>
-                      <span style={{ fontSize:10, color:"var(--text-muted)", flexShrink:0, width:44 }}>{entry.date.slice(5).replace("-","/")}</span>
-                      <span style={{ fontSize:11, color:"var(--text-sec)", lineHeight:1.4 }}>{highlightMatch(entry.note || "—", search.trim())}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -1713,7 +1721,6 @@ function HelpPanel({ open: isOpen, onClose }) {
         ["Drag a task card",     "Reorder within a day, or drop on another day to move it."],
         ["Click a note's detail","Edit the optional note inline, in notepad or on a task."],
         ["Enter in syllabus bar","Queues the chapter into the notepad (doesn't schedule it)."],
-        ["Drag notepad/ledger",  "handle · resizes both panels; double-click resets."],
         ["Drag sidebar edge",    "Resizes the syllabus panel; double-click resets."],
       ],
     },
@@ -1812,7 +1819,7 @@ function DensityDots({ tasks }) {
   );
 }
 
-function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMobile }) {
+function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMobile, tests = [], onOpenTest, onScheduleTest }) {
   const today = todayStr();
   const [viewYear,  setViewYear]  = useState(() => parseInt(activeDate.split("-")[0]));
   const [viewMonth, setViewMonth] = useState(() => parseInt(activeDate.split("-")[1])-1);
@@ -1841,6 +1848,10 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMob
     const done  = tasks.filter(t => t.completed).length;
     return { tasks, total:tasks.length, pct:tasks.length?Math.round((done/tasks.length)*100):0 };
   };
+
+  const testsByDate = {};
+  for (const t of tests) (testsByDate[t.date] ??= []).push(t);
+  const selectedTests = testsByDate[selected] ?? [];
 
   const prevMonth = () => { if (viewMonth===0) { setViewYear(y=>y-1); setViewMonth(11); } else setViewMonth(m=>m-1); };
   const nextMonth = () => { if (viewMonth===11) { setViewYear(y=>y+1); setViewMonth(0); } else setViewMonth(m=>m+1); };
@@ -1904,6 +1915,9 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMob
                 onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
               >›</button>
             </div>
+            <button onClick={onScheduleTest} className="press-scale" title="Schedule an upcoming test" style={{ background:"#FF7AC618", border:"1px solid #FF7AC650", borderRadius:8, color:"#FF7AC6", fontSize:11, padding:isMobile?"8px 12px":"6px 12px", cursor:"pointer", letterSpacing:"0.08em", fontFamily:"'JetBrains Mono', monospace" }}
+              onMouseEnter={e=>e.currentTarget.style.background="#FF7AC628"} onMouseLeave={e=>e.currentTarget.style.background="#FF7AC618"}
+            >⏱ TEST</button>
             <button onClick={onClose} className="press-scale" style={{ background:"transparent", border:"1px solid var(--border-main)", borderRadius:8, color:"var(--text-muted)", fontSize:12, padding:isMobile?"8px 13px":"6px 12px", cursor:"pointer", letterSpacing:"0.1em", fontFamily:"'JetBrains Mono', monospace" }}
               onMouseEnter={e=>{ e.currentTarget.style.color="var(--accent-red)"; e.currentTarget.style.borderColor="var(--accent-red)"; }}
               onMouseLeave={e=>{ e.currentTarget.style.color="var(--text-muted)"; e.currentTarget.style.borderColor="var(--border-main)"; }}
@@ -1926,6 +1940,7 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMob
               const isSel     = ds===selected;
               const isActive  = ds===activeDate;
               const { tasks, total, pct } = getStats(ds);
+              const testCount = (testsByDate[ds] ?? []).length;
               const isWeekend = ((firstWeekday+day-1)%7===0)||((firstWeekday+day-1)%7===6);
               const ringAccent = tasks.length===1 ? S[tasks[0].subject]?.accent??"#38D9F5" : "#38D9F5";
               return (
@@ -1935,6 +1950,7 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMob
                   title={`${ds} — double-click to jump`}
                   style={{ position:"relative", borderRadius:10, border:`1px solid ${isSel?"var(--accent-cyan)":isToday?"var(--accent-orange)80":isActive?"#38D9F530":"var(--border-sub)"}`, background:isSel?"#38D9F510":isActive?"#38D9F508":isToday?"#FF9F4308":"var(--bg-elevated)", padding:isMobile?"6px 3px 5px":"8px 6px 6px", minHeight:isMobile?54:68, display:"flex", flexDirection:"column", alignItems:"center", userSelect:"none" }}
                 >
+                  {testCount > 0 && <span style={{ position:"absolute", top:3, right:3, fontSize:8, lineHeight:"12px", color:"#FF7AC6", background:"#FF7AC622", borderRadius:4, padding:"0 3px", fontWeight:700 }}>⏱{testCount}</span>}
                   <span style={{ fontSize:isToday||isSel?(isMobile?13:15):(isMobile?12:13), fontWeight:isToday||isSel?700:400, color:isSel?"var(--accent-cyan)":isToday?"var(--accent-orange)":isActive?"var(--text-primary)":isWeekend?"var(--text-muted)":"var(--text-sec)", lineHeight:1, fontFamily:"'Space Grotesk', sans-serif" }}>{day}</span>
                   {total>0 && <span style={{ marginTop:4, fontSize:isMobile?9:10, color:pct===100?"var(--accent-green)":"var(--text-muted)" }}>{pct===100?"✓":`${total}`}</span>}
                   {tasks.length>0 && !isMobile && <DensityDots tasks={tasks} />}
@@ -1945,11 +1961,21 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMob
             })}
           </div>
 
+          {/* Tests on selected day */}
+          {selectedTests.length > 0 && (
+            <div style={{ padding:isMobile?"10px 14px 12px":"10px 20px 12px", borderTop:"1px solid var(--border-sub)" }}>
+              <div style={{ fontSize:9, letterSpacing:"0.2em", color:"#FF7AC6", marginBottom:8, fontWeight:700 }}>TESTS — {fmtDateBig(selected)}</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                {selectedTests.map(t => <TestChip key={t.id} test={t} onOpen={() => onOpenTest?.(t)} compact={isMobile} />)}
+              </div>
+            </div>
+          )}
+
           {/* Footer */}
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10, padding:isMobile?"10px 16px 14px":"10px 24px 14px", borderTop:"1px solid var(--border-sub)" }}>
             {!isMobile && (
               <div style={{ display:"flex", gap:16, alignItems:"center", flexWrap:"wrap" }}>
-                {[{ color:"var(--accent-orange)", label:"Today" },{ color:"var(--accent-cyan)", label:"Selected" },{ color:"var(--accent-green)", label:"All done" }].map(({ color, label }) => (
+                {[{ color:"var(--accent-orange)", label:"Today" },{ color:"var(--accent-cyan)", label:"Selected" },{ color:"var(--accent-green)", label:"All done" },{ color:"#FF7AC6", label:"Test" }].map(({ color, label }) => (
                   <div key={label} style={{ display:"flex", alignItems:"center", gap:5 }}>
                     <div style={{ width:8, height:8, borderRadius:"50%", background:color }} />
                     <span style={{ fontSize:10, color:"var(--text-muted)", letterSpacing:"0.08em" }}>{label}</span>
@@ -1971,15 +1997,336 @@ function CalendarOverlay({ open, onClose, data, activeDate, setActiveDate, isMob
   );
 }
 
+// ─── TESTS (upcoming exams + syllabus) ─────────────────────────────────────────
+
+function TestChip({ test, onOpen, compact = false }) {
+  const [tip, setTip] = useState(null);
+  const ref = useRef(null);
+  const count = test.syllabus?.length ?? 0;
+  const preview = (test.syllabus ?? []).slice(0, 6);
+  const more = Math.max(0, count - preview.length);
+
+  const showTip = () => {
+    if (!count) return;
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 360;
+    const w = Math.min(300, Math.max(220, Math.round(r.width)), vw - 24);
+    const x = Math.max(12, Math.min(r.left, vw - w - 12));
+    setTip({ x, y: r.bottom + 8, width: w });
+  };
+
+  return (
+    <>
+      <button
+        ref={ref}
+        onClick={onOpen}
+        onMouseEnter={showTip}
+        onMouseLeave={() => setTip(null)}
+        className="press-scale test-chip"
+        style={{
+          display:"flex", alignItems:"center", gap:7, width:"100%", textAlign:"left",
+          background:"#FF7AC612", border:"1px solid #FF7AC640", borderRadius:9,
+          padding: compact ? "4px 8px" : "7px 10px", cursor:"pointer",
+          fontFamily:"'JetBrains Mono', monospace",
+        }}
+      >
+        <span style={{ flexShrink:0, fontSize:11, lineHeight:1 }}>⏱</span>
+        <span style={{ flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:compact?10:11, color:"var(--text-primary)", fontWeight:600 }}>{test.title}</span>
+        {count > 0 && <span style={{ flexShrink:0, fontSize:9, color:"#FF7AC6", background:"#FF7AC61A", border:"1px solid #FF7AC640", borderRadius:99, padding:"1px 6px" }}>{count}</span>}
+      </button>
+
+      {tip && (
+        <div className="test-tooltip" style={{ position:"fixed", left:tip.x, top:tip.y, width:tip.width, zIndex:400, background:"var(--bg-elevated)", border:"1px solid #FF7AC655", borderRadius:10, boxShadow:"0 18px 44px rgba(0,0,0,0.6)", padding:"9px 11px", fontFamily:"'JetBrains Mono', monospace" }}>
+          <div style={{ fontSize:9, letterSpacing:"0.2em", color:"#FF7AC6", marginBottom:7, fontWeight:700 }}>TEST SYLLABUS</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+            {preview.map((s) => (
+              <div key={s.subject + s.chapter} style={{ display:"flex", alignItems:"center", gap:7, fontSize:11, color:"var(--text-sec)" }}>
+                <span style={{ width:6, height:6, borderRadius:"50%", background:(S[s.subject] ?? S.Physics).accent, flexShrink:0 }} />
+                <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.chapter}</span>
+              </div>
+            ))}
+            {more > 0 && <div style={{ fontSize:10, color:"var(--text-muted)", marginTop:2 }}>+ {more} more — click to view all</div>}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function TestDetailsModal({ test, onClose, onDelete, onAddToTodo, onEdit }) {
+  if (!test) return null;
+  const bySubject = {};
+  for (const s of (test.syllabus ?? [])) { (bySubject[s.subject] ??= []).push(s); }
+  const count = test.syllabus?.length ?? 0;
+  const today = todayStr();
+  const diff = Math.round((new Date(test.date + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+
+  return (
+    <div className="help-overlay" onClick={onClose} style={{ position:"fixed", inset:0, zIndex:110, background:"rgba(2,6,12,0.75)", backdropFilter:"blur(10px)", WebkitBackdropFilter:"blur(10px)", display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflow:"hidden" }}>
+      <div className="cal-panel" onClick={e=>e.stopPropagation()} style={{ background:"var(--bg-surface)", border:"1px solid #FF7AC650", borderRadius:20, boxShadow:"0 40px 100px rgba(0,0,0,0.8)", width:"100%", maxWidth:560, maxHeight:"88vh", display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:"'JetBrains Mono', monospace" }}>
+        <div style={{ flexShrink:0, display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:10, padding:"16px 18px 14px", background:"linear-gradient(to right,#FF7AC612,transparent)", borderBottom:"1px solid var(--border-sub)" }}>
+          <div style={{ minWidth:0 }}>
+            <p style={{ margin:0, fontSize:10, letterSpacing:"0.3em", color:"#FF7AC6" }}>UPCOMING TEST</p>
+            <h2 style={{ margin:"4px 0 0", fontSize:18, fontWeight:700, color:"var(--text-primary)", fontFamily:"'Space Grotesk', sans-serif", overflowWrap:"anywhere" }}>{test.title}</h2>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--text-sec)" }}>
+              {fmtDateBig(test.date)} {fmtYear(test.date)} · {fmtWeekday(test.date)}
+              <span style={{ marginLeft:8, color: test.date === today ? "var(--accent-orange)" : diff < 0 ? "var(--text-muted)" : "var(--accent-green)" }}>
+                {test.date === today ? "TODAY" : diff === 1 ? "TOMORROW" : diff < 0 ? `(${Math.abs(diff)}d ago)` : `in ${diff}d`}
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose} className="press-scale" style={{ flexShrink:0, border:"1px solid var(--border-main)", background:"transparent", borderRadius:8, padding:"6px 12px", fontSize:11, letterSpacing:"0.1em", color:"var(--text-sec)", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>✕</button>
+        </div>
+
+        <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"14px 18px" }}>
+          {count === 0 ? (
+            <p style={{ fontSize:12, color:"var(--text-muted)", lineHeight:1.7 }}>No syllabus chapters on this test yet.</p>
+          ) : Object.entries(bySubject).map(([subject, chapters]) => {
+            const cfg = S[subject] ?? S.Physics;
+            return (
+              <div key={subject} style={{ marginBottom:14 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:7 }}>
+                  <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:cfg.accent, background:cfg.accentBg, border:`1px solid ${cfg.accentBorder}`, borderRadius:5, padding:"2px 6px" }}>{cfg.label}</span>
+                  <span style={{ fontSize:12, color:"var(--text-primary)", fontWeight:600 }}>{subject}</span>
+                  <span style={{ fontSize:10, color:"var(--text-muted)" }}>{chapters.length}</span>
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:4, paddingLeft:4 }}>
+                  {chapters.map((s, i) => (
+                    <div key={s.chapter + i} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:"var(--text-sec)", padding:"5px 9px", background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8 }}>
+                      <span style={{ width:5, height:5, borderRadius:"50%", background:cfg.accent, flexShrink:0 }} />
+                      <span style={{ flex:1, minWidth:0, overflowWrap:"anywhere" }}>
+                        {s.chapter}
+                        {s.note && <span style={{ display:"block", fontSize:10, color:"var(--text-muted)", marginTop:1 }}>/{s.note}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ flexShrink:0, display:"flex", gap:8, padding:"12px 18px 16px", borderTop:"1px solid var(--border-sub)", flexWrap:"wrap" }}>
+          <button onClick={() => onEdit?.(test)} className="press-scale" style={{ flex:1, minWidth:120, background:"transparent", border:"1px solid #FF7AC650", borderRadius:9, color:"#FF7AC6", fontSize:11, padding:"9px 12px", cursor:"pointer", letterSpacing:"0.08em", fontFamily:"'JetBrains Mono', monospace" }}>✎ EDIT SYLLABUS</button>
+          <button onClick={() => onAddToTodo?.(test)} title="Add new chapters, refresh notes, drop removed ones" className="press-scale" style={{ flex:1, minWidth:120, background:"#FF7AC618", border:"1px solid #FF7AC650", borderRadius:9, color:"#FF7AC6", fontSize:11, padding:"9px 12px", cursor:"pointer", letterSpacing:"0.08em", fontFamily:"'JetBrains Mono', monospace" }}>⟳ SYNC TO-DO</button>
+          <button onClick={() => onDelete?.(test.id)} className="press-scale" style={{ border:"1px solid #3A2230", background:"#1E0E18", borderRadius:9, color:"#FF8FA3", fontSize:11, padding:"9px 12px", cursor:"pointer", letterSpacing:"0.08em", fontFamily:"'JetBrains Mono', monospace" }}>DELETE</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleTestModal({ open, onClose, onSave, syllabus, initialTest = null }) {
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState(todayStr());
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(() => new Map()); // "subject::chapter" -> note
+  const [custom, setCustom] = useState([]);                  // [{ subject, chapter }]
+  const [openSubj, setOpenSubj] = useState({ Physics: true, Chemistry: true, Mathematics: true });
+  const titleRef = useRef(null);
+
+  const keyOf = (subject, chapter) => subject + "::" + chapter;
+  const isBuiltin = (subject, chapter) => Boolean(syllabus[subject] && Object.values(syllabus[subject]).some(chs => chs.includes(chapter)));
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setOpenSubj({ Physics: true, Chemistry: true, Mathematics: true });
+    if (initialTest) {
+      setTitle(initialTest.title);
+      setDate(initialTest.date);
+      const sel = new Map();
+      const cus = [];
+      for (const s of initialTest.syllabus ?? []) {
+        sel.set(keyOf(s.subject, s.chapter), s.note ?? "");
+        if (!isBuiltin(s.subject, s.chapter)) cus.push({ subject: s.subject, chapter: s.chapter });
+      }
+      setSelected(sel);
+      setCustom(cus);
+    } else {
+      setTitle(""); setDate(todayStr()); setSelected(new Map()); setCustom([]);
+    }
+    requestAnimationFrame(() => titleRef.current?.focus());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+
+  const toggle = (subject, chapter) => {
+    const k = keyOf(subject, chapter);
+    setSelected(prev => { const n = new Map(prev); if (n.has(k)) n.delete(k); else n.set(k, ""); return n; });
+  };
+
+  // Unified smart search commit: a fuzzy match selects that chapter; anything
+  // else becomes a custom chapter. "/note" attaches a note either way.
+  const handleSearchCommit = ({ subject, chapter, note, matched }) => {
+    const builtin = matched || isBuiltin(subject, chapter);
+    if (!builtin) {
+      setCustom(prev => prev.some(c => c.subject === subject && c.chapter === chapter) ? prev : [...prev, { subject, chapter }]);
+    }
+    const k = keyOf(subject, chapter);
+    setSelected(prev => { const n = new Map(prev); n.set(k, note || n.get(k) || ""); return n; });
+    return builtin ? `✓ ${chapter} selected` : `+ ${chapter} added`;
+  };
+
+  const removeCustom = (subject, chapter) => {
+    setCustom(prev => prev.filter(c => !(c.subject === subject && c.chapter === chapter)));
+    setSelected(prev => { const n = new Map(prev); n.delete(keyOf(subject, chapter)); return n; });
+  };
+
+  const toggleSubject = (subject, classes) => {
+    const keys = [];
+    for (const chapters of Object.values(classes)) for (const ch of chapters) keys.push(keyOf(subject, ch));
+    for (const c of custom) if (c.subject === subject) keys.push(keyOf(c.subject, c.chapter));
+    setSelected(prev => {
+      const n = new Map(prev);
+      const all = keys.length > 0 && keys.every(k => n.has(k));
+      if (all) keys.forEach(k => n.delete(k)); else keys.forEach(k => { if (!n.has(k)) n.set(k, ""); });
+      return n;
+    });
+  };
+
+  const save = () => {
+    const t = title.trim();
+    if (!t) return;
+    const list = [];
+    const added = new Set();
+    const pushEntry = (subject, chapter) => {
+      const k = keyOf(subject, chapter);
+      if (!selected.has(k) || added.has(k)) return;
+      added.add(k);
+      list.push({ subject, chapter, note: selected.get(k) ?? "" });
+    };
+    for (const [subject, classes] of Object.entries(syllabus))
+      for (const chapters of Object.values(classes))
+        for (const ch of chapters) pushEntry(subject, ch);
+    for (const c of custom) pushEntry(c.subject, c.chapter);
+    onSave({ id: initialTest?.id ?? null, title: t, date, syllabus: list });
+    onClose();
+  };
+
+  if (!open) return null;
+
+  const checkStyle = (checked, cfg) => ({
+    width:16, height:16, borderRadius:5, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
+    fontSize:10, fontWeight:700, color:"#08111F",
+    border:`1.5px solid ${checked ? cfg.accent : "var(--border-main)"}`, background: checked ? cfg.accent : "transparent",
+  });
+
+  const chapterRow = (subject, ch, cfg, isCustom) => {
+    const k = keyOf(subject, ch);
+    const on = selected.has(k);
+    const note = selected.get(k) ?? "";
+    return (
+      <div key={(isCustom ? "custom::" : "") + ch} onClick={() => toggle(subject, ch)} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 12px 6px 36px", cursor:"pointer", background: on ? `${cfg.accent}12` : "transparent", transition:"background 0.1s" }}>
+        <span style={checkStyle(on, cfg)}>{on ? "✓" : ""}</span>
+        <span style={{ flex:1, minWidth:0, fontSize:12, color: on ? "var(--text-primary)" : "var(--text-sec)" }}>
+          {ch}
+          {on && note && <span style={{ display:"block", fontSize:10, color:"var(--text-muted)", marginTop:1 }}>/{note}</span>}
+        </span>
+        {isCustom && (
+          <button onClick={(e) => { e.stopPropagation(); removeCustom(subject, ch); }} title="Remove custom chapter" style={{ flexShrink:0, background:"none", border:"none", color:"var(--text-muted)", fontSize:11, cursor:"pointer", padding:"0 2px" }}>✕</button>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="help-overlay" onClick={onClose} style={{ position:"fixed", inset:0, zIndex:115, background:"rgba(2,6,12,0.75)", backdropFilter:"blur(10px)", WebkitBackdropFilter:"blur(10px)", display:"flex", alignItems:"center", justifyContent:"center", padding:16, overflow:"hidden" }}>
+      <div className="cal-panel" onClick={e=>e.stopPropagation()} style={{ background:"var(--bg-surface)", border:"1px solid var(--border-main)", borderRadius:20, boxShadow:"0 40px 100px rgba(0,0,0,0.8)", width:"100%", maxWidth:620, maxHeight:"90vh", display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:"'JetBrains Mono', monospace" }}>
+
+        <div style={{ flexShrink:0, padding:"16px 18px 14px", background:"linear-gradient(to right,#FF7AC612,transparent)", borderBottom:"1px solid var(--border-sub)" }}>
+          <p style={{ margin:0, fontSize:10, letterSpacing:"0.3em", color:"#FF7AC6" }}>{initialTest ? "EDIT TEST" : "SCHEDULE TEST"}</p>
+          <h2 style={{ margin:"4px 0 12px", fontSize:18, fontWeight:700, color:"var(--text-primary)", fontFamily:"'Space Grotesk', sans-serif" }}>{initialTest ? "Edit test & syllabus" : "New upcoming test"}</h2>
+          <input ref={titleRef} value={title} onChange={e=>setTitle(e.target.value)} placeholder="Test name (e.g. Physics Mock 2)" onKeyDown={e=>{ if(e.key==="Enter") save(); if(e.key==="Escape") onClose(); }}
+            style={{ width:"100%", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:9, fontSize:14, color:"var(--text-primary)", padding:"10px 12px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:"#FF7AC6", marginBottom:10 }} />
+          <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{ colorScheme:"dark", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:9, fontSize:12, color:"var(--text-primary)", padding:"8px 10px", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:"#FF7AC6" }} />
+            <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+              {[["Today", 0],["+1d", 1],["+7d", 7],["+30d", 30]].map(([lbl, step]) => (
+                <button key={lbl} onClick={() => setDate(shiftDateStr(todayStr(), step))} className="press-scale" style={{ background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:7, color:"var(--text-sec)", fontSize:11, padding:"6px 9px", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>{lbl}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flexShrink:0, display:"flex", alignItems:"center", gap:8, padding:"10px 18px", borderBottom:"1px solid var(--border-sub)" }}>
+          <span style={{ fontSize:10, letterSpacing:"0.2em", color:"var(--text-muted)", flexShrink:0 }}>SYLLABUS</span>
+          <div style={{ flex:1, minWidth:0 }}>
+            <SmartSearchInput
+              placeholder="phy waves /verma · no match = custom"
+              accent="#FF7AC6"
+              onQueryChange={setQuery}
+              onCommit={handleSearchCommit}
+              footerHint="↵ SELECT · NO MATCH = CUSTOM · /NOTE"
+            />
+          </div>
+          <span style={{ flexShrink:0, fontSize:11, color:"#FF7AC6", background:"#FF7AC618", border:"1px solid #FF7AC640", borderRadius:99, padding:"2px 9px" }}>{selected.size} selected</span>
+        </div>
+
+        <div style={{ flex:1, minHeight:0, overflowY:"auto", padding:"14px 18px" }}>
+          {Object.entries(syllabus).map(([subject, classes]) => {
+            const cfg = S[subject] ?? S.Physics;
+            const subjectMatches = q ? subject.toLowerCase().includes(q) : false;
+            const visibleClasses = {};
+            let anyVisible = subjectMatches;
+            for (const [cls, chapters] of Object.entries(classes)) {
+              const list = q && !subjectMatches ? chapters.filter(ch => ch.toLowerCase().includes(q)) : chapters;
+              if (list.length) { visibleClasses[cls] = list; anyVisible = true; }
+            }
+            const customForSubject = custom.filter(c => c.subject === subject && (!q || subjectMatches || c.chapter.toLowerCase().includes(q)));
+            if (customForSubject.length) anyVisible = true;
+            if (!anyVisible) return null;
+            const subjectKeys = [];
+            for (const chapters of Object.values(classes)) for (const ch of chapters) subjectKeys.push(keyOf(subject, ch));
+            for (const c of customForSubject) subjectKeys.push(keyOf(c.subject, c.chapter));
+            const selInSubject = subjectKeys.filter(k => selected.has(k)).length;
+            const isOpen = q ? true : openSubj[subject] !== false;
+            return (
+              <div key={subject} style={{ border:"1px solid var(--border-sub)", borderRadius:12, marginBottom:12, overflow:"hidden", background:"var(--bg-elevated)" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", background:`${cfg.accent}10`, borderBottom:"1px solid var(--border-sub)" }}>
+                  <button onClick={() => toggleSubject(subject, classes)} className="press-scale" style={checkStyle(selInSubject === subjectKeys.length && subjectKeys.length > 0, cfg)}>{selInSubject === subjectKeys.length && subjectKeys.length > 0 ? "✓" : ""}</button>
+                  <span style={{ fontSize:9, fontWeight:700, letterSpacing:"0.18em", color:cfg.accent, background:cfg.accentBg, border:`1px solid ${cfg.accentBorder}`, borderRadius:5, padding:"2px 6px", flexShrink:0 }}>{cfg.label}</span>
+                  <span onClick={() => setOpenSubj(o => ({ ...o, [subject]: !isOpen }))} style={{ flex:1, cursor:"pointer", fontSize:13, color:"var(--text-primary)", fontWeight:600 }}>{subject}</span>
+                  <span style={{ fontSize:10, color:"var(--text-muted)" }}>{selInSubject}/{subjectKeys.length}</span>
+                  <span onClick={() => setOpenSubj(o => ({ ...o, [subject]: !isOpen }))} style={{ fontSize:10, color:"var(--text-muted)", cursor:"pointer" }}>{isOpen ? "▾" : "▸"}</span>
+                </div>
+                {isOpen && Object.entries(visibleClasses).map(([cls, chapters]) => (
+                  <div key={cls}>
+                    <div style={{ padding:"6px 12px 4px 36px", fontSize:9, letterSpacing:"0.18em", color:"var(--text-muted)", fontWeight:600 }}>{cls.toUpperCase()}</div>
+                    {chapters.map(ch => chapterRow(subject, ch, cfg, false))}
+                  </div>
+                ))}
+                {isOpen && customForSubject.length > 0 && (
+                  <div>
+                    <div style={{ padding:"6px 12px 4px 36px", fontSize:9, letterSpacing:"0.18em", color:"var(--accent-orange)", fontWeight:600 }}>CUSTOM</div>
+                    {customForSubject.map(c => chapterRow(c.subject, c.chapter, cfg, true))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ flexShrink:0, display:"flex", gap:8, padding:"12px 18px 16px", borderTop:"1px solid var(--border-sub)" }}>
+          <button onClick={onClose} className="press-scale" style={{ flex:1, background:"transparent", border:"1px solid var(--border-main)", borderRadius:9, color:"var(--text-sec)", fontSize:12, padding:"10px 0", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}>CANCEL</button>
+          <button onClick={save} disabled={!title.trim()} className="press-scale" style={{ flex:2, background:"#FF7AC618", border:"1px solid #FF7AC650", borderRadius:9, color:"#FF7AC6", fontSize:12, padding:"10px 0", cursor: title.trim() ? "pointer" : "default", opacity: title.trim() ? 1 : 0.4, letterSpacing:"0.1em", fontWeight:600, fontFamily:"'JetBrains Mono', monospace" }}>{initialTest ? "SAVE CHANGES" : "SCHEDULE TEST"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── ROOT APP ──────────────────────────────────────────────────────────────────
 
-const NOTEPAD_DEFAULT_HEIGHT = 320;
-const NOTEPAD_MIN_HEIGHT     = 160;
-const LEDGER_MIN_HEIGHT      = 150;
 const SIDEBAR_DEFAULT_WIDTH  = 280;
 const SIDEBAR_MIN_WIDTH      = 200;
 const SIDEBAR_MAX_WIDTH      = 480;
 const SIDEBAR_COLLAPSED_WIDTH = 44;
+const RIGHT_COL_DEFAULT_WIDTH = 320;
+const RIGHT_COL_MIN_WIDTH     = 240;
+const RIGHT_COL_MAX_WIDTH     = 640;
 
 export default function App() {
   const [data,         setData]         = useState(() => loadStoredData());
@@ -1987,17 +2334,12 @@ export default function App() {
   const [showHelp,     setShowHelp]     = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [syllabusQuery, setSyllabusQuery] = useState("");
-  const [ledgerSearch, setLedgerSearch] = useState("");
   const [saveStatus,   setSaveStatus]   = useState("idle"); // idle | saving | saved
 
-  // Notepad / Mastery Ledger resizable split
-  const [notepadHeight, setNotepadHeight] = useState(() => {
-    if (typeof window === "undefined") return NOTEPAD_DEFAULT_HEIGHT;
-    const saved = Number(window.localStorage.getItem("jee-os-notepad-height"));
-    return Number.isFinite(saved) && saved > 0 ? saved : NOTEPAD_DEFAULT_HEIGHT;
-  });
-  const [resizingNotepad, setResizingNotepad] = useState(false);
-  const asideRef = useRef(null);
+  // Tests (upcoming exams) + their detail / schedule / edit modals
+  const [showScheduleTest, setShowScheduleTest] = useState(false);
+  const [activeTest, setActiveTest] = useState(null);
+  const [editingTest, setEditingTest] = useState(null);
 
   // Syllabus sidebar: resizable width + collapse
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -2009,10 +2351,17 @@ export default function App() {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem("jee-os-sidebar-collapsed") === "1";
   });
-  const [resizingSidebar, setResizingSidebar] = useState(false);
+  const [, setResizingSidebar] = useState(false);
+
+  // Right column (Notepad) — draggable width
+  const [rightColWidth, setRightColWidth] = useState(() => {
+    if (typeof window === "undefined") return RIGHT_COL_DEFAULT_WIDTH;
+    const saved = Number(window.localStorage.getItem("jee-os-rightcol-width"));
+    return Number.isFinite(saved) && saved > 0 ? saved : RIGHT_COL_DEFAULT_WIDTH;
+  });
 
   const isMobile = useIsMobile();
-  const [mobileTab, setMobileTab] = useState("calendar"); // syllabus | calendar | notepad | ledger
+  const [mobileTab, setMobileTab] = useState("calendar"); // syllabus | calendar | notepad
 
   const { toasts, push: pushToast } = useToast();
 
@@ -2022,10 +2371,6 @@ export default function App() {
   const moveActive = useCallback((step) => setActiveDate(d => shiftDateStr(d, step)), []);
 
   useEffect(() => {
-    window.localStorage.setItem("jee-os-notepad-height", String(notepadHeight));
-  }, [notepadHeight]);
-
-  useEffect(() => {
     window.localStorage.setItem("jee-os-sidebar-width", String(sidebarWidth));
   }, [sidebarWidth]);
 
@@ -2033,19 +2378,19 @@ export default function App() {
     window.localStorage.setItem("jee-os-sidebar-collapsed", sidebarCollapsed ? "1" : "0");
   }, [sidebarCollapsed]);
 
-  const handleNotepadResizeDelta = useCallback((dy) => {
-    setNotepadHeight((h) => {
-      const asideH = asideRef.current?.clientHeight ?? 800;
-      const maxH   = Math.max(NOTEPAD_MIN_HEIGHT, asideH - LEDGER_MIN_HEIGHT - 9);
-      return Math.min(Math.max(h + dy, NOTEPAD_MIN_HEIGHT), maxH);
-    });
-  }, []);
-  const resetNotepadHeight = useCallback(() => setNotepadHeight(NOTEPAD_DEFAULT_HEIGHT), []);
+  useEffect(() => {
+    window.localStorage.setItem("jee-os-rightcol-width", String(rightColWidth));
+  }, [rightColWidth]);
 
   const handleSidebarResizeDelta = useCallback((dx) => {
     setSidebarWidth((w) => Math.min(Math.max(w + dx, SIDEBAR_MIN_WIDTH), SIDEBAR_MAX_WIDTH));
   }, []);
   const resetSidebarWidth = useCallback(() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH), []);
+
+  const handleRightColResizeDelta = useCallback((dx) => {
+    setRightColWidth((w) => Math.min(Math.max(w - dx, RIGHT_COL_MIN_WIDTH), RIGHT_COL_MAX_WIDTH));
+  }, []);
+  const resetRightColWidth = useCallback(() => setRightColWidth(RIGHT_COL_DEFAULT_WIDTH), []);
 
   const schedSave = useCallback((nextData) => {
     clearTimeout(saveTimer.current);
@@ -2252,187 +2597,340 @@ export default function App() {
     pushToast("Planner data is saved in this browser profile", { icon:"OK" });
   };
 
-  const masteryLedger = useMemo(() => {
-    if (!data) return {};
-    const ledger = {};
-    for (const [date, day] of Object.entries(data.days??{})) {
-      for (const task of day.tasks??[]) {
-        if (!task.completed) continue;
-        const s=task.subject??"Physics", c=task.chapter??"General";
-        ledger[s]??={}; ledger[s][c]??=[];
-        ledger[s][c].push({ date, note:task.customNote });
-      }
+  // ── Tests ──
+  const saveTest = useCallback(({ id, title, date, syllabus: testSyllabus }) => {
+    if (id) {
+      patch(prev => ({ ...prev, tests: (prev.tests ?? []).map(t => t.id === id ? { ...t, title, date, syllabus: testSyllabus ?? [] } : t) }));
+      setActiveTest(prev => (prev && prev.id === id ? { ...prev, title, date, syllabus: testSyllabus ?? [] } : prev));
+      pushToast("Test updated", { icon:"⏱" });
+      return;
     }
-    return ledger;
-  }, [data]);
+    const newId = testUid();
+    patch(prev => {
+      const seen = new Set();
+      const newNotes = (testSyllabus ?? [])
+        .filter(s => {
+          const k = s.chapter.toLowerCase().trim();
+          if (!s.chapter || seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        })
+        .map(s => ({ id: noteUid(), text: s.chapter, note: s.note ?? "", done: false, testId: newId, createdAt: new Date().toISOString() }));
+      return {
+        ...prev,
+        tests: [{ id: newId, title, date, syllabus: testSyllabus ?? [], createdAt: new Date().toISOString() }, ...(prev.tests ?? [])],
+        notes: [...newNotes, ...(prev.notes ?? [])],
+      };
+    });
+    pushToast(`Test scheduled · ${testSyllabus?.length ?? 0} chapters → to-do`, { icon:"⏱" });
+  }, [patch, pushToast]);
+
+  const deleteTest = useCallback((testId) => {
+    patch(prev => ({ ...prev, tests: (prev.tests ?? []).filter(t => t.id !== testId) }));
+    pushToast("Test removed", { icon:"🗑" });
+  }, [patch, pushToast]);
+
+  // Mirror the test's current syllabus into its to-do folder: add missing
+  // chapters, refresh notes on existing ones, drop chapters removed from the
+  // syllabus. Done flags on surviving notes are preserved.
+  const syncTestToTodo = useCallback((test) => {
+    const syllabus = test.syllabus ?? [];
+    const keys = new Set(syllabus.filter(s => s.chapter).map(s => s.chapter.toLowerCase().trim()));
+    const folder = (data.notes ?? []).filter(n => n.testId === test.id);
+    const byText = new Map(folder.map(n => [n.text.toLowerCase().trim(), n]));
+    let added = 0, updated = 0;
+    for (const s of syllabus) {
+      if (!s.chapter) continue;
+      const existing = byText.get(s.chapter.toLowerCase().trim());
+      if (!existing) added++;
+      else if ((existing.note ?? "") !== (s.note ?? "")) updated++;
+    }
+    const removed = folder.filter(n => !keys.has(n.text.toLowerCase().trim())).length;
+    if (!added && !updated && !removed) { pushToast("To-do already matches this test", { icon:"📝" }); return; }
+    patch(prev => {
+      const prevFolder = (prev.notes ?? []).filter(n => n.testId === test.id);
+      const prevByText = new Map(prevFolder.map(n => [n.text.toLowerCase().trim(), n]));
+      const others = (prev.notes ?? []).filter(n => n.testId !== test.id);
+      const seen = new Set();
+      const synced = [];
+      for (const s of syllabus) {
+        const k = s.chapter.toLowerCase().trim();
+        if (!s.chapter || seen.has(k)) continue;
+        seen.add(k);
+        const existing = prevByText.get(k);
+        synced.push(existing
+          ? { ...existing, note: s.note ?? "" }
+          : { id: noteUid(), text: s.chapter, note: s.note ?? "", done: false, testId: test.id, createdAt: new Date().toISOString() });
+      }
+      return { ...prev, notes: [...synced, ...others] };
+    });
+    pushToast(`To-do synced · +${added} · ✎${updated} · −${removed}`, { icon:"📝" });
+  }, [patch, pushToast, data]);
 
   const totalDone  = useMemo(() => !data?0:Object.values(data.days??{}).reduce((s,d)=>s+(d.tasks??[]).filter(t=>t.completed).length,0), [data]);
   const totalDoneBump = useBump(totalDone);
   const visibleDays = useMemo(() => [-1,0,1].map(i=>shiftDateStr(activeDate,i)), [activeDate]);
+  const testsByDate = useMemo(() => {
+    const map = {};
+    for (const t of (data?.tests ?? [])) (map[t.date] ??= []).push(t);
+    for (const d of Object.keys(map)) map[d].sort((a, b) => String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")));
+    return map;
+  }, [data]);
 
   if (!data) return (<><InjectStyles /><SetupScreen onReady={(d)=>setData(normalizeData(d))} /></>);
 
   const today = todayStr();
 
+  const testOverlays = (
+    <>
+      <HelpPanel open={showHelp} onClose={() => setShowHelp(false)} />
+      <CalendarOverlay open={showCalendar} onClose={() => setShowCalendar(false)} data={data} activeDate={activeDate} setActiveDate={setActiveDate} isMobile={isMobile} tests={data.tests ?? []} onOpenTest={setActiveTest} onScheduleTest={() => setShowScheduleTest(true)} />
+      <ScheduleTestModal open={showScheduleTest || Boolean(editingTest)} onClose={() => { setShowScheduleTest(false); setEditingTest(null); }} onSave={saveTest} syllabus={JEE_SYLLABUS} initialTest={editingTest} />
+      <TestDetailsModal test={activeTest} onClose={() => setActiveTest(null)} onDelete={(id) => { deleteTest(id); setActiveTest(null); }} onAddToTodo={syncTestToTodo} onEdit={(t) => { setActiveTest(null); setEditingTest(t); }} />
+    </>
+  );
+
   return (
     <>
       <InjectStyles />
       <div style={{ height:"100vh", background:"var(--bg-base)", color:"var(--text-primary)", display:"flex", flexDirection:"column", overflow:"hidden", fontFamily:"'JetBrains Mono', monospace", position:"relative" }}>
+        <Toaster toasts={toasts} />
 
-        {/* ── HEADER ── */}
-        <header style={{ flexShrink:0, display:"flex", alignItems:"center", gap:12, padding:"10px 16px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
-          <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
-          <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.3.1</span>
+        {isMobile ? (
+          <>
+            {/* ── MOBILE HEADER ── */}
+            <header style={{ flexShrink:0, display:"flex", alignItems:"center", gap:8, padding:"8px 12px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
+              <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
+              <span style={{ fontSize:9, letterSpacing:"0.1em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 5px", flexShrink:0 }}>v1.6.0</span>
+              <span style={{ flex:1 }} />
+              <span style={{ fontSize:11, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"3px 7px", flexShrink:0 }}>🔥{data.meta?.streakCount??0}</span>
+              <span style={{ fontSize:11, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"3px 7px", flexShrink:0 }}>✓{totalDone}</span>
+              <button className="press-scale" onClick={() => setShowCalendar(true)} title="Calendar" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 8px", fontSize:13, cursor:"pointer" }}>▦</button>
+              <button className="press-scale" onClick={() => setShowHelp(true)} title="Help" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 8px", fontSize:12, cursor:"pointer" }}>?</button>
+              <button className="press-scale" onClick={() => setShowScheduleTest(true)} title="Schedule test" style={{ color:"#FF7AC6", background:"#FF7AC618", border:"1px solid #FF7AC640", borderRadius:7, padding:"4px 8px", fontSize:12, cursor:"pointer" }}>⏱</button>
+            </header>
 
-          <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />
+            {/* ── MOBILE BODY ── */}
+            <div style={{ position:"relative", flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+              {testOverlays}
 
-          <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
-            {saveStatus !== "idle" && (
-              <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, letterSpacing:"0.1em", color: saveStatus==="saving" ? "var(--accent-orange)" : "var(--accent-green)", padding:"0 2px", userSelect:"none" }}>
-                <span style={{ width:6, height:6, borderRadius:"50%", background:"currentColor", flexShrink:0, animation: saveStatus==="saving" ? "pulse 1s ease-in-out infinite" : "none" }} />
-                {saveStatus==="saving" ? "SAVING…" : "SAVED"}
-              </span>
-            )}
-            <span style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>🔥 {data.meta?.streakCount??0}d</span>
-            <span className={totalDoneBump ? "count-bump" : undefined} style={{ display:"inline-block", fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>✓ {totalDone}</span>
-            <button className="press-scale" onClick={() => setShowCalendar(true)} title="Full calendar (C)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
-              onMouseEnter={e=>e.currentTarget.style.color="var(--accent-purple)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-            >▦ CAL</button>
-            <button className="press-scale" onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
-              onMouseEnter={e=>e.currentTarget.style.color="var(--accent-cyan)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-            >? HELP</button>
-            <button onClick={handleStorageInfo} title="Storage info" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
-              onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-            >⚙</button>
-          </div>
-        </header>
-
-        {/* ── BODY ── */}
-        <div style={{ position:"relative", flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
-          <Toaster toasts={toasts} />
-          <HelpPanel    open={showHelp}     onClose={() => setShowHelp(false)} />
-          <CalendarOverlay open={showCalendar} onClose={() => setShowCalendar(false)} data={data} activeDate={activeDate} setActiveDate={setActiveDate} />
-
-          <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
-
-            {/* Syllabus tree — collapsible + resizable, unified smart search */}
-            {sidebarCollapsed ? (
-              <aside style={{ width:SIDEBAR_COLLAPSED_WIDTH, flexShrink:0, background:"var(--bg-base)", borderRight:"1px solid var(--border-main)", display:"flex", flexDirection:"column", alignItems:"center", paddingTop:10, gap:10 }}>
-                <button className="sidebar-rail-btn" onClick={() => setSidebarCollapsed(false)} title="Expand syllabus (Ctrl+\)" style={{ width:28, height:28, borderRadius:7, border:"1px solid var(--border-main)", background:"var(--bg-elevated)", color:"var(--text-sec)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12 }}>»</button>
-                <span style={{ writingMode:"vertical-rl", fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none", marginTop:6 }}>SYLLABUS</span>
-                <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:8 }}>
-                  {Object.keys(JEE_SYLLABUS).map(subject => (
-                    <span key={subject} title={subject} style={{ width:8, height:8, borderRadius:"50%", background:S[subject]?.accent ?? "var(--text-muted)" }} />
-                  ))}
-                </div>
-              </aside>
-            ) : (
-              <aside style={{ width:sidebarWidth, flexShrink:0, background:"var(--bg-base)", borderRight:"1px solid var(--border-main)", display:"flex", overflow:"hidden" }}>
-                <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", minWidth:0 }}>
-                  <div style={{ flexShrink:0, borderBottom:"1px solid var(--border-sub)" }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px 6px", gap:8 }}>
+              {mobileTab === "syllabus" ? (
+                <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+                  <div style={{ flexShrink:0, padding:"10px 12px", borderBottom:"1px solid var(--border-sub)" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
                       <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>SYLLABUS</span>
-                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                        <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:5, padding:"1px 7px", whiteSpace:"nowrap" }}>→ {fmtDateBig(activeDate)}</span>
-                        <button className="sidebar-rail-btn" onClick={() => setSidebarCollapsed(true)} title="Collapse syllabus (Ctrl+\)" style={{ width:22, height:22, borderRadius:6, border:"1px solid var(--border-main)", background:"var(--bg-elevated)", color:"var(--text-sec)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, flexShrink:0 }}>«</button>
-                      </div>
                     </div>
-                    <div style={{ padding:"0 10px 10px" }}>
-                      <SyllabusSearchBar onAddNote={addNote} onQueryChange={setSyllabusQuery} />
+                    <SyllabusSearchBar onAddNote={addNote} onQueryChange={setSyllabusQuery} />
+                  </div>
+                  <div style={{ flex:1, overflowY:"auto", WebkitOverflowScrolling:"touch" }}>
+                    {Object.entries(JEE_SYLLABUS).map(([subject, classes]) => (
+                      <SubjectTree key={subject} subject={subject} classes={classes} activeDate={activeDate} onAddTask={addTask} searchQ={syllabusQuery} isMobile />
+                    ))}
+                  </div>
+                </div>
+              ) : mobileTab === "notepad" ? (
+                <NotepadPanel
+                  notes={data.notes ?? []}
+                  tests={data.tests ?? []}
+                  isMobile
+                  onAddNote={addNote}
+                  onToggleNote={toggleNote}
+                  onDeleteNote={deleteNote}
+                  onEditNote={editNoteText}
+                  onClearDone={clearDoneNotes}
+                  onTaskDrop={moveTaskToNotepad}
+                  onScheduleRelative={scheduleNoteRelative}
+                />
+              ) : (
+                <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+                  <div style={{ flexShrink:0, padding:"10px 12px 8px", borderBottom:"1px solid var(--border-sub)" }}>
+                    <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginTop:10 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                        <button onClick={() => moveActive(-1)} className="press-scale" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, padding:"6px 11px", fontSize:12, cursor:"pointer" }}>←</button>
+                        <button onClick={() => setActiveDate(today)} className="press-scale" style={{ color:"var(--accent-cyan)", background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, padding:"6px 11px", fontSize:11, cursor:"pointer" }}>TODAY</button>
+                        <button onClick={() => moveActive(1)} className="press-scale" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, padding:"6px 11px", fontSize:12, cursor:"pointer" }}>→</button>
+                      </div>
+                      <button onClick={() => setShowScheduleTest(true)} className="press-scale" style={{ color:"#FF7AC6", background:"#FF7AC618", border:"1px solid #FF7AC640", borderRadius:8, padding:"6px 10px", fontSize:11, cursor:"pointer" }}>⏱ TEST</button>
                     </div>
                   </div>
-                  {Object.entries(JEE_SYLLABUS).map(([subject, classes]) => (
-                    <SubjectTree key={subject} subject={subject} classes={classes} activeDate={activeDate} onAddTask={addTask} searchQ={syllabusQuery} />
-                  ))}
+                  <DayColumn
+                    isMobile
+                    date={activeDate}
+                    tasks={data.days[activeDate]?.tasks ?? []}
+                    isToday={activeDate === today}
+                    isActive
+                    onClick={() => {}}
+                    onToggle={tid => toggleTask(activeDate, tid)}
+                    onRemove={tid => removeTask(activeDate, tid)}
+                    onEditNote={(tid, note) => editTaskNote(activeDate, tid, note)}
+                    onDropTile={payload => handleTileDrop(activeDate, payload)}
+                    onMoveTask={(taskId, fromDate, toDate, toIndex) => moveTask(taskId, fromDate, toDate, toIndex)}
+                    onTaskToNotepad={(tid, d) => moveTaskToNotepad(tid, d)}
+                    tests={testsByDate[activeDate] ?? []}
+                    onOpenTest={setActiveTest}
+                  />
                 </div>
+              )}
+            </div>
+
+            {/* ── MOBILE TAB BAR ── */}
+            <nav className="safe-bottom" style={{ flexShrink:0, display:"flex", borderTop:"1px solid var(--border-main)", background:"var(--bg-surface)" }}>
+              {[
+                { id:"calendar", label:"Planner", icon:"📅" },
+                { id:"syllabus", label:"Syllabus", icon:"📚" },
+                { id:"notepad", label:"To-do", icon:"📝" },
+              ].map(tab => {
+                const active = mobileTab === tab.id;
+                return (
+                  <button key={tab.id} onClick={() => setMobileTab(tab.id)} className="tab-bar-btn" style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2, padding:"8px 0 7px", background:"transparent", border:"none", cursor:"pointer", color: active ? "var(--accent-cyan)" : "var(--text-muted)", fontFamily:"'JetBrains Mono', monospace" }}>
+                    <span style={{ fontSize:16, lineHeight:1 }}>{tab.icon}</span>
+                    <span style={{ fontSize:9, letterSpacing:"0.06em", fontWeight: active ? 700 : 500 }}>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </>
+        ) : (
+          <>
+            {/* ── HEADER ── */}
+            <header style={{ flexShrink:0, display:"flex", alignItems:"center", gap:12, padding:"10px 16px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border-main)", zIndex:10, position:"relative" }}>
+              <span style={{ fontSize:13, fontWeight:800, letterSpacing:"0.3em", color:"var(--accent-cyan)", flexShrink:0, userSelect:"none", fontFamily:"'Space Grotesk', sans-serif" }}>JEE//OS</span>
+              <span style={{ fontSize:10, letterSpacing:"0.14em", color:"var(--text-muted)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:6, padding:"2px 6px", flexShrink:0, userSelect:"none" }}>v1.5.0</span>
+
+              <CommandBar activeDate={activeDate} onAddTask={addTask} cmdRef={cmdRef} />
+
+              <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                {saveStatus !== "idle" && (
+                  <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, letterSpacing:"0.1em", color: saveStatus==="saving" ? "var(--accent-orange)" : "var(--accent-green)", padding:"0 2px", userSelect:"none" }}>
+                    <span style={{ width:6, height:6, borderRadius:"50%", background:"currentColor", flexShrink:0, animation: saveStatus==="saving" ? "pulse 1s ease-in-out infinite" : "none" }} />
+                    {saveStatus==="saving" ? "SAVING…" : "SAVED"}
+                  </span>
+                )}
+                <span style={{ fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>🔥 {data.meta?.streakCount??0}d</span>
+                <span className={totalDoneBump ? "count-bump" : undefined} style={{ display:"inline-block", fontSize:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px" }}>✓ {totalDone}</span>
+                <button className="press-scale" onClick={() => setShowScheduleTest(true)} title="Schedule an upcoming test" style={{ color:"#FF7AC6", background:"#FF7AC618", border:"1px solid #FF7AC640", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="#FF7AC628"} onMouseLeave={e=>e.currentTarget.style.background="#FF7AC618"}
+                >⏱ TEST</button>
+                <button className="press-scale" onClick={() => setShowCalendar(true)} title="Full calendar (C)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+                  onMouseEnter={e=>e.currentTarget.style.color="var(--accent-purple)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+                >▦ CAL</button>
+                <button className="press-scale" onClick={() => setShowHelp(true)} title="Help (?)" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:12, cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+                  onMouseEnter={e=>e.currentTarget.style.color="var(--accent-cyan)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+                >? HELP</button>
+                <button onClick={handleStorageInfo} title="Storage info" style={{ color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:7, padding:"4px 10px", fontSize:15, cursor:"pointer", transition:"color 0.12s" }}
+                  onMouseEnter={e=>e.currentTarget.style.color="var(--text-primary)"} onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+                >⚙</button>
+              </div>
+            </header>
+
+            {/* ── BODY ── */}
+            <div style={{ position:"relative", flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+              {testOverlays}
+
+              <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
+
+                {/* Syllabus tree — collapsible + resizable, unified smart search */}
+                {sidebarCollapsed ? (
+                  <aside style={{ width:SIDEBAR_COLLAPSED_WIDTH, flexShrink:0, background:"var(--bg-base)", borderRight:"1px solid var(--border-main)", display:"flex", flexDirection:"column", alignItems:"center", paddingTop:10, gap:10 }}>
+                    <button className="sidebar-rail-btn" onClick={() => setSidebarCollapsed(false)} title="Expand syllabus (Ctrl+\)" style={{ width:28, height:28, borderRadius:7, border:"1px solid var(--border-main)", background:"var(--bg-elevated)", color:"var(--text-sec)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12 }}>»</button>
+                    <span style={{ writingMode:"vertical-rl", fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none", marginTop:6 }}>SYLLABUS</span>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6, marginTop:8 }}>
+                      {Object.keys(JEE_SYLLABUS).map(subject => (
+                        <span key={subject} title={subject} style={{ width:8, height:8, borderRadius:"50%", background:S[subject]?.accent ?? "var(--text-muted)" }} />
+                      ))}
+                    </div>
+                  </aside>
+                ) : (
+                  <aside style={{ width:sidebarWidth, flexShrink:0, background:"var(--bg-base)", borderRight:"1px solid var(--border-main)", display:"flex", overflow:"hidden" }}>
+                    <div style={{ flex:1, overflowY:"auto", display:"flex", flexDirection:"column", minWidth:0 }}>
+                      <div style={{ flexShrink:0, borderBottom:"1px solid var(--border-sub)" }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 12px 6px", gap:8 }}>
+                          <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>SYLLABUS</span>
+                          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ fontSize:10, color:"var(--accent-cyan)", background:"#38D9F515", border:"1px solid #38D9F525", borderRadius:5, padding:"1px 7px", whiteSpace:"nowrap" }}>→ {fmtDateBig(activeDate)}</span>
+                            <button className="sidebar-rail-btn" onClick={() => setSidebarCollapsed(true)} title="Collapse syllabus (Ctrl+\)" style={{ width:22, height:22, borderRadius:6, border:"1px solid var(--border-main)", background:"var(--bg-elevated)", color:"var(--text-sec)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, flexShrink:0 }}>«</button>
+                          </div>
+                        </div>
+                        <div style={{ padding:"0 10px 10px" }}>
+                          <SyllabusSearchBar onAddNote={addNote} onQueryChange={setSyllabusQuery} />
+                        </div>
+                      </div>
+                      {Object.entries(JEE_SYLLABUS).map(([subject, classes]) => (
+                        <SubjectTree key={subject} subject={subject} classes={classes} activeDate={activeDate} onAddTask={addTask} searchQ={syllabusQuery} />
+                      ))}
+                    </div>
+                    <ResizeHandle
+                      axis="x"
+                      onResizeDelta={handleSidebarResizeDelta}
+                      onReset={resetSidebarWidth}
+                      onResizeStart={() => setResizingSidebar(true)}
+                      onResizeEnd={() => setResizingSidebar(false)}
+                    />
+                  </aside>
+                )}
+
+                {/* Timeline */}
+                <main style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
+                  onWheel={e => { if (Math.abs(e.deltaX)>Math.abs(e.deltaY)) moveActive(e.deltaX>0?1:-1); }}
+                >
+                  <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
+                    {visibleDays.map((date, idx) => (
+                      <DayColumn key={date} date={date} tasks={data.days[date]?.tasks??[]}
+                        isToday={date===today} isActive={idx===1}
+                        onClick={() => { const d=idx-1; if (d!==0) moveActive(d); }}
+                        onToggle={tid => toggleTask(date,tid)}
+                        onRemove={tid => removeTask(date,tid)}
+                        onEditNote={(tid, note) => editTaskNote(date, tid, note)}
+                        onDropTile={payload => handleTileDrop(date, payload)}
+                        onMoveTask={(taskId, fromDate, toDate, toIndex) => moveTask(taskId, fromDate, toDate, toIndex)}
+                        tests={testsByDate[date] ?? []}
+                        onOpenTest={setActiveTest}
+                      />
+                    ))}
+                  </div>
+                  <nav style={{ flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"10px 0", borderTop:"1px solid var(--border-sub)", background:"var(--bg-base)" }}>
+                    {[
+                      { label:"«7d",  action:()=>moveActive(-7),       title:"Back 7 days [" },
+                      { label:"← prev", action:()=>moveActive(-1) },
+                      { label:"today",  action:()=>setActiveDate(today), title:"Jump to today (T)", cyan:true },
+                      { label:"next →", action:()=>moveActive(1) },
+                      { label:"7d»",  action:()=>moveActive(7),        title:"Forward 7 days ]" },
+                    ].map(({ label, action, title, cyan }) => (
+                      <button key={label} onClick={action} title={title} style={{ fontSize:label.length>4?11:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
+                        onMouseEnter={e=>e.currentTarget.style.color=cyan?"var(--accent-cyan)":"var(--text-primary)"}
+                        onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
+                      >{label}</button>
+                    ))}
+                    <span style={{ fontSize:10, color:"var(--text-dim)", marginLeft:8, userSelect:"none" }}>
+                      ← → · T=today · [ ]=week · C=cal · Ctrl+D=done · ?=help
+                    </span>
+                  </nav>
+                </main>
+
+                {/* Right column — To-do Notepad, draggable width */}
                 <ResizeHandle
                   axis="x"
-                  onResizeDelta={handleSidebarResizeDelta}
-                  onReset={resetSidebarWidth}
-                  onResizeStart={() => setResizingSidebar(true)}
-                  onResizeEnd={() => setResizingSidebar(false)}
+                  onResizeDelta={handleRightColResizeDelta}
+                  onReset={resetRightColWidth}
                 />
-              </aside>
-            )}
-
-            {/* Timeline */}
-            <main style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}
-              onWheel={e => { if (Math.abs(e.deltaX)>Math.abs(e.deltaY)) moveActive(e.deltaX>0?1:-1); }}
-            >
-              <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
-                {visibleDays.map((date, idx) => (
-                  <DayColumn key={date} date={date} tasks={data.days[date]?.tasks??[]}
-                    isToday={date===today} isActive={idx===1}
-                    onClick={() => { const d=idx-1; if (d!==0) moveActive(d); }}
-                    onToggle={tid => toggleTask(date,tid)}
-                    onRemove={tid => removeTask(date,tid)}
-                    onEditNote={(tid, note) => editTaskNote(date, tid, note)}
-                    onDropTile={payload => handleTileDrop(date, payload)}
-                    onMoveTask={(taskId, fromDate, toDate, toIndex) => moveTask(taskId, fromDate, toDate, toIndex)}
+                <aside style={{ width:rightColWidth, flexShrink:0, background:"var(--bg-base)", borderLeft:"1px solid var(--border-main)", overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                  <NotepadPanel
+                    notes={data.notes ?? []}
+                    tests={data.tests ?? []}
+                    onAddNote={addNote}
+                    onToggleNote={toggleNote}
+                    onDeleteNote={deleteNote}
+                    onEditNote={editNoteText}
+                    onClearDone={clearDoneNotes}
+                    onTaskDrop={moveTaskToNotepad}
+                    onScheduleRelative={scheduleNoteRelative}
                   />
-                ))}
+                </aside>
               </div>
-              <nav style={{ flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"10px 0", borderTop:"1px solid var(--border-sub)", background:"var(--bg-base)" }}>
-                {[
-                  { label:"«7d",  action:()=>moveActive(-7),       title:"Back 7 days [" },
-                  { label:"← prev", action:()=>moveActive(-1) },
-                  { label:"today",  action:()=>setActiveDate(today), title:"Jump to today (T)", cyan:true },
-                  { label:"next →", action:()=>moveActive(1) },
-                  { label:"7d»",  action:()=>moveActive(7),        title:"Forward 7 days ]" },
-                ].map(({ label, action, title, cyan }) => (
-                  <button key={label} onClick={action} title={title} style={{ fontSize:label.length>4?11:12, color:"var(--text-sec)", background:"var(--bg-elevated)", border:"1px solid var(--border-sub)", borderRadius:8, padding:"5px 14px", cursor:"pointer", fontFamily:"'JetBrains Mono', monospace", transition:"color 0.12s" }}
-                    onMouseEnter={e=>e.currentTarget.style.color=cyan?"var(--accent-cyan)":"var(--text-primary)"}
-                    onMouseLeave={e=>e.currentTarget.style.color="var(--text-sec)"}
-                  >{label}</button>
-                ))}
-                <span style={{ fontSize:10, color:"var(--text-dim)", marginLeft:8, userSelect:"none" }}>
-                  ← → · T=today · [ ]=week · C=cal · Ctrl+D=done · ?=help
-                </span>
-              </nav>
-            </main>
-
-            {/* Notepad + Mastery Ledger — resizable vertical split */}
-            <aside ref={asideRef} style={{ width:"23%", flexShrink:0, background:"var(--bg-base)", borderLeft:"1px solid var(--border-main)", overflow:"hidden", display:"flex", flexDirection:"column" }}>
-              <NotepadPanel
-                notes={data.notes ?? []}
-                height={notepadHeight}
-                resizing={resizingNotepad}
-                onAddNote={addNote}
-                onToggleNote={toggleNote}
-                onDeleteNote={deleteNote}
-                onEditNote={editNoteText}
-                onClearDone={clearDoneNotes}
-                onTaskDrop={moveTaskToNotepad}
-              />
-
-              <ResizeHandle
-                onResizeDelta={handleNotepadResizeDelta}
-                onReset={resetNotepadHeight}
-                onResizeStart={() => setResizingNotepad(true)}
-                onResizeEnd={() => setResizingNotepad(false)}
-              />
-
-              <div style={{ padding:"10px 14px 8px", borderBottom:"1px solid var(--border-sub)", flexShrink:0 }}>
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-                  <span style={{ fontSize:10, letterSpacing:"0.3em", color:"var(--text-muted)", userSelect:"none" }}>MASTERY LEDGER</span>
-                  <span style={{ fontSize:10, color:"var(--accent-green)", background:"#3DFC9A15", border:"1px solid #3DFC9A25", borderRadius:5, padding:"1px 7px" }}>{totalDone} logged</span>
-                </div>
-                <div style={{ position:"relative" }}>
-                  <span style={{ position:"absolute", left:9, top:"50%", transform:"translateY(-60%)", fontSize:12, color:"var(--text-muted)", pointerEvents:"none" }}>🔍</span>
-                  <input value={ledgerSearch} onChange={e=>setLedgerSearch(e.target.value)} placeholder="Search ledger..."
-                    style={{ width:"100%", background:"var(--bg-elevated)", border:"1px solid var(--border-main)", borderRadius:8, padding:"7px 26px 7px 28px", fontSize:12, color:"var(--text-primary)", outline:"none", fontFamily:"'JetBrains Mono', monospace", caretColor:"var(--accent-cyan)" }}
-                    onFocus={e=>e.currentTarget.style.borderColor="var(--accent-cyan)"}
-                    onBlur={e=>e.currentTarget.style.borderColor="var(--border-main)"}
-                  />
-                  {ledgerSearch && <button onClick={()=>setLedgerSearch("")} style={{ position:"absolute", right:8, top:"50%", transform:"translateY(-60%)", background:"none", border:"none", cursor:"pointer", fontSize:12, color:"var(--text-muted)", padding:0 }}>✕</button>}
-                </div>
-              </div>
-              <div style={{ flex:1, overflowY:"auto" }}>
-                <MasteryLedger ledger={masteryLedger} search={ledgerSearch} />
-              </div>
-            </aside>
-          </div>
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </>
   );

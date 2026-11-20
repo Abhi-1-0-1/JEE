@@ -1,7 +1,7 @@
 {
   "name": "jee-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.5.0",
   "type": "module",
   "homepage": "https://Abhi-1-0-1.github.io/JEE",
   "scripts": {
